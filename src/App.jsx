@@ -41,6 +41,7 @@ function emptyForm() {
     clientName: "",
     doctorName: "",
     appointmentType: TIPOS_CONSULTA[0],
+    appointmentTypeDetail: "",
     paymentMethod: FORMAS_PAGAMENTO[0],
     paymentStatus: "pendente",
     valorTotal: "",
@@ -177,6 +178,7 @@ export default function App() {
       clientName: appt.clientName,
       doctorName: appt.doctorName || "",
       appointmentType: appt.appointmentType || TIPOS_CONSULTA[0],
+      appointmentTypeDetail: appt.appointmentTypeDetail || "",
       paymentMethod: appt.paymentMethod,
       paymentStatus: appt.paymentStatus,
       valorTotal: appt.valorTotal ?? "",
@@ -781,7 +783,8 @@ function AppointmentCard({ appt, role, editable, onEdit, onDelete, onRequestActi
         </div>
         <div style={styles.cardMetaRow}>
           <span style={styles.typeBadge}>
-            <ClipboardList size={11} color="#2F6F63" /> {appt.appointmentType || "Consulta"}
+            <ClipboardList size={11} color="#2F6F63" />
+            {appt.appointmentType || "Consulta"}{appt.appointmentTypeDetail ? ` · ${appt.appointmentTypeDetail}` : ""}
           </span>
           <span style={{ ...styles.statusBadge, background: st.bg, color: st.text }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: st.dot, display: "inline-block" }} />
@@ -1063,6 +1066,16 @@ function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, is
             </label>
 
             <label style={styles.label}>
+              Detalhe (opcional)
+              <input
+                style={styles.input}
+                value={form.appointmentTypeDetail}
+                onChange={(e) => upd("appointmentTypeDetail", e.target.value)}
+                placeholder="Ex: Quimioterapia, Raio-X do joelho, Sutura..."
+              />
+            </label>
+
+            <label style={styles.label}>
               Médico que vai atender
               <select style={styles.input} value={form.doctorName} onChange={(e) => upd("doctorName", e.target.value)} required>
                 <option value="" disabled>Selecione o médico</option>
@@ -1270,7 +1283,7 @@ function sumField(list, field) {
 }
 
 function exportCSV(rows, filename) {
-  const header = ["Data", "Horário", "Cliente", "Tipo", "Médico", "Forma de pagamento", "Convênio", "Status", "Valor total", "Valor pago", "Anotações"];
+  const header = ["Data", "Horário", "Cliente", "Tipo", "Detalhe", "Médico", "Forma de pagamento", "Convênio", "Status", "Valor total", "Valor pago", "Anotações"];
   const csvRows = [
     header,
     ...rows.map((a) => [
@@ -1278,6 +1291,7 @@ function exportCSV(rows, filename) {
       a.time,
       a.clientName,
       a.appointmentType || "Consulta",
+      a.appointmentTypeDetail || "",
       a.doctorName,
       a.paymentMethod,
       a.convenioName || "",
