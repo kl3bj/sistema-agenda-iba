@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, X, Calendar, Search, Check, Clock, CircleDollarSign, StickyNote, ChevronLeft, ChevronRight, Pencil, Trash2, Stethoscope, ClipboardList, Lock, Users, ShieldCheck } from "lucide-react";
+import { Plus, X, Calendar, Search, Check, Clock, CircleDollarSign, StickyNote, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Stethoscope, ClipboardList, Lock, Users, ShieldCheck, Bell, AlertTriangle, RefreshCw, Ban } from "lucide-react";
 
 const STORAGE_KEY = "clinica:consultas";
 const DOCTORS_KEY = "clinica:medicos";
@@ -40,6 +40,7 @@ function emptyForm() {
     paymentStatus: "pendente",
     valorTotal: "",
     valorPago: "",
+    convenioName: "",
     notes: "",
   };
 }
@@ -61,6 +62,10 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [passwordModal, setPasswordModal] = useState(null); // 'create' | 'enter' | 'change' | null
   const [doctorManagerOpen, setDoctorManagerOpen] = useState(false);
+  const [doctorPickerOpen, setDoctorPickerOpen] = useState(false);
+  const [selectedDoctorView, setSelectedDoctorView] = useState(null);
+  const [requestModalFor, setRequestModalFor] = useState(null); // id da consulta (médico solicitando)
+  const [resolveModalFor, setResolveModalFor] = useState(null); // id da consulta (secretária resolvendo)
 
   useEffect(() => {
     let mounted = true;
@@ -140,6 +145,7 @@ export default function App() {
       paymentStatus: appt.paymentStatus,
       valorTotal: appt.valorTotal ?? "",
       valorPago: appt.valorPago ?? "",
+      convenioName: appt.convenioName ?? "",
       notes: appt.notes ?? "",
     });
     setFormOpen(true);
@@ -165,17 +171,83 @@ export default function App() {
     setConfirmDelete(null);
   }
 
+  function submitDoctorRequest(id, type, reason) {
+    const next = appointments.map((a) =>
+      a.id === id ? { ...a, requestPending: { type, reason, requestedAt: new Date().toISOString() } } : a
+    );
+    persist(next);
+    setRequestModalFor(null);
+  }
+
+  function confirmCancelRequest(id) {
+    const next = appointments.map((a) => {
+      if (a.id !== id) return a;
+      const reason = a.requestPending?.reason || "";
+      return {
+        ...a,
+        cancelled: true,
+        requestPending: null,
+        resolution: { type: "cancelada", reason, resolvedAt: new Date().toISOString() },
+        doctorNotice: { type: "cancelada" },
+      };
+    });
+    persist(next);
+    setResolveModalFor(null);
+  }
+
+  function confirmRescheduleRequest(id, newDate, newTime) {
+    const next = appointments.map((a) => {
+      if (a.id !== id) return a;
+      const reason = a.requestPending?.reason || "";
+      return {
+        ...a,
+        date: newDate,
+        time: newTime,
+        requestPending: null,
+        resolution: { type: "remarcada", reason, resolvedAt: new Date().toISOString() },
+        doctorNotice: { type: "remarcada", newDate, newTime },
+      };
+    });
+    persist(next);
+    setResolveModalFor(null);
+  }
+
+  function discardRequest(id) {
+    const next = appointments.map((a) => (a.id === id ? { ...a, requestPending: null } : a));
+    persist(next);
+    setResolveModalFor(null);
+  }
+
+  function dismissDoctorNotice(id) {
+    const next = appointments.map((a) => (a.id === id ? { ...a, doctorNotice: null } : a));
+    persist(next);
+  }
+
   const filtered = useMemo(() => {
     let list = [...appointments];
+    if (role === "chefe") {
+      list = list.filter((a) => a.doctorName === selectedDoctorView && (!a.cancelled || a.doctorNotice));
+    } else if (doctorFilter !== "todos") {
+      list = list.filter((a) => a.doctorName === doctorFilter);
+    }
     if (!showAllDates) list = list.filter((a) => a.date === selectedDate);
-    if (doctorFilter !== "todos") list = list.filter((a) => a.doctorName === doctorFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter((a) => a.clientName.toLowerCase().includes(q));
     }
     list.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
     return list;
-  }, [appointments, selectedDate, showAllDates, search, doctorFilter]);
+  }, [appointments, selectedDate, showAllDates, search, doctorFilter, role, selectedDoctorView]);
+
+  const pendingRequestsCount = useMemo(
+    () => appointments.filter((a) => a.requestPending).length,
+    [appointments]
+  );
+
+  const doctorNoticesCount = useMemo(
+    () => appointments.filter((a) => a.doctorName === selectedDoctorView && a.doctorNotice).length,
+    [appointments, selectedDoctorView]
+  );
 
   const grouped = useMemo(() => {
     const map = new Map();
@@ -220,19 +292,55 @@ export default function App() {
         <div style={styles.roleWrap}>
           <span style={{ color: "#8A8A82", fontSize: 14 }}>Carregando...</span>
         </div>
+      ) : doctorPickerOpen ? (
+        <DoctorPickerScreen
+          doctors={doctors}
+          onSelect={(name) => {
+            setSelectedDoctorView(name);
+            setRole("chefe");
+            setDoctorPickerOpen(false);
+          }}
+          onBack={() => {
+            setDoctorPickerOpen(false);
+            setRole(null);
+            setSelectedDoctorView(null);
+          }}
+        />
       ) : role === null ? (
-        <RoleSelect onSelectSecretaria={requestSecretariaAccess} onSelectChefe={() => setRole("chefe")} />
+        <RoleSelect onSelectSecretaria={requestSecretariaAccess} onSelectChefe={() => setDoctorPickerOpen(true)} />
       ) : (
         <div style={styles.shell}>
           <Header
             role={role}
-            onSwitchRole={() => setRole(null)}
+            selectedDoctorView={selectedDoctorView}
+            onSwitchRole={() => {
+              setRole(null);
+              setSelectedDoctorView(null);
+              setDoctorPickerOpen(false);
+            }}
+            onSwitchDoctor={() => setDoctorPickerOpen(true)}
             saving={saving}
             onOpenDoctors={() => setDoctorManagerOpen(true)}
             onOpenPassword={() => setPasswordModal("change")}
           />
 
           {error && <div style={styles.errorBanner}>{error}</div>}
+
+          {role === "secretaria" && pendingRequestsCount > 0 && (
+            <div style={styles.pendingBanner}>
+              <Bell size={15} color="#8A5A15" style={{ flexShrink: 0 }} />
+              <span>
+                {pendingRequestsCount} solicitação(ões) de médico(s) aguardando sua análise. Toque em "Ver todas as datas" se não encontrar a consulta destacada em amarelo.
+              </span>
+            </div>
+          )}
+
+          {role === "chefe" && doctorNoticesCount > 0 && (
+            <div style={styles.pendingBanner}>
+              <Bell size={15} color="#8A5A15" style={{ flexShrink: 0 }} />
+              <span>Você tem {doctorNoticesCount} atualização(ões) sobre suas solicitações — veja destacado abaixo.</span>
+            </div>
+          )}
 
           <div style={styles.toolbar}>
             <div style={styles.dateNav}>
@@ -262,7 +370,7 @@ export default function App() {
             </button>
           </div>
 
-          {doctors.length > 0 && (
+          {role === "secretaria" && doctors.length > 0 && (
             <div style={styles.searchRow}>
               <Stethoscope size={15} color="#8A8A82" />
               <select
@@ -310,9 +418,13 @@ export default function App() {
                     <AppointmentCard
                       key={a.id}
                       appt={a}
+                      role={role}
                       editable={isSecretaria}
                       onEdit={() => openEditForm(a)}
                       onDelete={() => setConfirmDelete(a.id)}
+                      onRequestAction={() => setRequestModalFor(a.id)}
+                      onOpenResolve={() => setResolveModalFor(a.id)}
+                      onDismissNotice={() => dismissDoctorNotice(a.id)}
                     />
                   ))}
                 </div>
@@ -358,6 +470,24 @@ export default function App() {
           onAdd={addDoctor}
           onRemove={removeDoctor}
           onClose={() => setDoctorManagerOpen(false)}
+        />
+      )}
+
+      {requestModalFor && (
+        <RequestActionModal
+          appt={appointments.find((a) => a.id === requestModalFor)}
+          onClose={() => setRequestModalFor(null)}
+          onSubmit={submitDoctorRequest}
+        />
+      )}
+
+      {resolveModalFor && (
+        <ResolveRequestModal
+          appt={appointments.find((a) => a.id === resolveModalFor)}
+          onClose={() => setResolveModalFor(null)}
+          onConfirmCancel={confirmCancelRequest}
+          onConfirmReschedule={confirmRescheduleRequest}
+          onDiscard={discardRequest}
         />
       )}
 
@@ -408,12 +538,14 @@ function RoleSelect({ onSelectSecretaria, onSelectChefe }) {
   );
 }
 
-function Header({ role, onSwitchRole, saving, onOpenDoctors, onOpenPassword }) {
+function Header({ role, selectedDoctorView, onSwitchRole, onSwitchDoctor, saving, onOpenDoctors, onOpenPassword }) {
   return (
     <div style={styles.header}>
       <div>
-        <div style={styles.headerEyebrow}>{role === "secretaria" ? "Modo secretária" : "Agenda do médico · somente leitura"}</div>
-        <h1 style={styles.headerTitle}>Agenda da clínica</h1>
+        <div style={styles.headerEyebrow}>{role === "secretaria" ? "Modo secretária" : "Agenda do médico"}</div>
+        <h1 style={styles.headerTitle}>
+          {role === "chefe" ? `Agenda do Doutor(a) ${selectedDoctorView}` : "Agenda da clínica"}
+        </h1>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {saving && <span style={styles.savingTag}>salvando...</span>}
@@ -427,28 +559,72 @@ function Header({ role, onSwitchRole, saving, onOpenDoctors, onOpenPassword }) {
             </button>
           </>
         )}
+        {role === "chefe" && (
+          <button className="btn tap" style={styles.switchBtn} onClick={onSwitchDoctor}>trocar médico</button>
+        )}
         <button className="btn tap" style={styles.switchBtn} onClick={onSwitchRole}>trocar</button>
       </div>
     </div>
   );
 }
 
-function AppointmentCard({ appt, editable, onEdit, onDelete }) {
-  const st = STATUS_STYLES[appt.paymentStatus] || STATUS_STYLES.pendente;
+function DoctorPickerScreen({ doctors, onSelect, onBack }) {
   return (
-    <div style={styles.card}>
+    <div style={styles.roleWrap}>
+      <div style={styles.roleCard}>
+        <Stethoscope size={30} color="#2F6F63" />
+        <h1 style={styles.roleTitle}>Agenda do médico</h1>
+        <p style={styles.roleSubtitle}>
+          {doctors.length === 0 ? "Nenhum médico cadastrado ainda. Peça para a secretária cadastrar." : "Qual é o seu nome?"}
+        </p>
+        {doctors.map((d) => (
+          <button
+            key={d}
+            className="btn tap"
+            style={{ ...styles.roleBtnSecondary, marginBottom: 10 }}
+            onClick={() => onSelect(d)}
+          >
+            {d}
+          </button>
+        ))}
+        <button className="btn tap" style={{ ...styles.switchBtn, marginTop: 6 }} onClick={onBack}>voltar</button>
+      </div>
+    </div>
+  );
+}
+
+function AppointmentCard({ appt, role, editable, onEdit, onDelete, onRequestAction, onOpenResolve, onDismissNotice }) {
+  const [expanded, setExpanded] = useState(false);
+  const st = STATUS_STYLES[appt.paymentStatus] || STATUS_STYLES.pendente;
+
+  let cardStyle = styles.card;
+  if (appt.cancelled) cardStyle = { ...styles.card, ...styles.cardCancelled };
+  else if (appt.requestPending) cardStyle = { ...styles.card, ...styles.cardPending };
+
+  return (
+    <div style={cardStyle}>
       <div style={styles.cardTime}>
         <Clock size={14} color="#2F6F63" />
         <span>{appt.time}</span>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={styles.cardName}>{appt.clientName}</div>
+        <div
+          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <div style={styles.cardName}>{appt.clientName}</div>
+          <ChevronDown
+            size={16}
+            color="#B0AD9F"
+            style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform .15s ease" }}
+          />
+        </div>
         <div style={styles.cardMetaRow}>
           <span style={{ ...styles.statusBadge, background: st.bg, color: st.text }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: st.dot, display: "inline-block" }} />
             {st.label}
           </span>
-          {appt.doctorName && (
+          {appt.doctorName && role !== "chefe" && (
             <span style={styles.cardMetaItem}>
               <Stethoscope size={13} color="#8A8A82" /> {appt.doctorName}
             </span>
@@ -457,11 +633,66 @@ function AppointmentCard({ appt, editable, onEdit, onDelete }) {
             <CircleDollarSign size={13} color="#8A8A82" /> {appt.paymentMethod}
           </span>
         </div>
+
+        {expanded && (
+          <div style={styles.expandPanel}>
+            <div style={styles.expandRow}><span>Valor total</span><strong>{appt.valorTotal ? `R$ ${appt.valorTotal}` : "—"}</strong></div>
+            <div style={styles.expandRow}><span>Valor já pago</span><strong>{appt.valorPago ? `R$ ${appt.valorPago}` : "—"}</strong></div>
+            {appt.paymentMethod === "Convênio" && (
+              <div style={styles.expandRow}><span>Convênio</span><strong>{appt.convenioName || "—"}</strong></div>
+            )}
+          </div>
+        )}
+
         {appt.notes && (
           <div style={styles.cardNotes}>
             <StickyNote size={12} color="#B0AD9F" style={{ flexShrink: 0, marginTop: 2 }} />
             <span>{appt.notes}</span>
           </div>
+        )}
+
+        {appt.requestPending && role === "secretaria" && (
+          <div style={styles.inlineNotice}>
+            <AlertTriangle size={14} color="#8A5A15" style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              Médico solicitou <strong>{appt.requestPending.type === "cancelamento" ? "cancelamento" : "remarcação"}</strong>: "{appt.requestPending.reason}"
+            </span>
+          </div>
+        )}
+        {appt.requestPending && role === "secretaria" && (
+          <button className="btn tap" style={styles.resolveBtn} onClick={onOpenResolve}>Analisar solicitação</button>
+        )}
+
+        {appt.requestPending && role === "chefe" && (
+          <div style={styles.inlineNotice}>
+            <Clock size={14} color="#8A5A15" style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>Aguardando retorno da secretária sobre sua solicitação.</span>
+          </div>
+        )}
+
+        {appt.cancelled && appt.resolution && role === "secretaria" && (
+          <div style={{ ...styles.inlineNotice, ...styles.inlineNoticeDanger }}>
+            <Ban size={14} color="#A03B2E" style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>Cancelada a pedido do médico. Motivo: "{appt.resolution.reason}"</span>
+          </div>
+        )}
+
+        {appt.doctorNotice && role === "chefe" && (
+          <div style={{ ...styles.inlineNotice, ...styles.inlineNoticeInfo }}>
+            <Bell size={14} color="#2F6F63" style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              {appt.doctorNotice.type === "cancelada"
+                ? "Sua solicitação de cancelamento foi confirmada pela secretária."
+                : `Sua solicitação de remarcação foi confirmada. Nova data: ${formatDatePt(appt.doctorNotice.newDate)} às ${appt.doctorNotice.newTime}.`}
+              <button className="btn tap" style={styles.noticeOkBtn} onClick={onDismissNotice}>OK, entendi</button>
+            </span>
+          </div>
+        )}
+
+        {role === "chefe" && !appt.requestPending && !appt.cancelled && (
+          <button className="btn tap" style={styles.requestActionBtn} onClick={onRequestAction}>
+            <RefreshCw size={13} color="#5B5A52" /> Solicitar cancelamento ou remarcação
+          </button>
         )}
       </div>
       {editable && (
@@ -474,6 +705,137 @@ function AppointmentCard({ appt, editable, onEdit, onDelete }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function RequestActionModal({ appt, onClose, onSubmit }) {
+  const [type, setType] = useState("cancelamento");
+  const [reason, setReason] = useState("");
+
+  function submit(e) {
+    e.preventDefault();
+    if (!reason.trim()) return;
+    onSubmit(appt.id, type, reason.trim());
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={{ ...styles.modal, maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Solicitar à secretária</h2>
+          <button className="btn tap" style={styles.iconBtn} onClick={onClose} aria-label="Fechar">
+            <X size={18} color="#5B5A52" />
+          </button>
+        </div>
+        <form onSubmit={submit} style={styles.form}>
+          <p style={{ fontSize: 13, color: "#8A8A82", margin: "-4px 0 0" }}>
+            Consulta de <strong>{appt?.clientName}</strong> em {appt && formatDatePt(appt.date)} às {appt?.time}.
+          </p>
+          <label style={styles.label}>
+            O que você quer solicitar?
+            <div style={styles.statusOptions}>
+              <button
+                type="button"
+                className="btn tap"
+                onClick={() => setType("cancelamento")}
+                style={{
+                  ...styles.statusOption,
+                  background: type === "cancelamento" ? "#FBE9E7" : "#fff",
+                  color: type === "cancelamento" ? "#A03B2E" : "#8A8A82",
+                  borderColor: type === "cancelamento" ? "#C24A38" : "#E3E1D9",
+                }}
+              >
+                <Ban size={13} /> Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn tap"
+                onClick={() => setType("remarcacao")}
+                style={{
+                  ...styles.statusOption,
+                  background: type === "remarcacao" ? "#FBF0DE" : "#fff",
+                  color: type === "remarcacao" ? "#8A5A15" : "#8A8A82",
+                  borderColor: type === "remarcacao" ? "#D9932E" : "#E3E1D9",
+                }}
+              >
+                <RefreshCw size={13} /> Remarcar
+              </button>
+            </div>
+          </label>
+          <label style={styles.label}>
+            Motivo (a secretária vai ver essa mensagem)
+            <textarea
+              style={{ ...styles.input, minHeight: 80, resize: "vertical" }}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ex: Tive uma emergência e preciso remarcar para outro dia..."
+              required
+            />
+          </label>
+          <button type="submit" className="btn tap" style={styles.submitBtn}>Enviar solicitação</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ResolveRequestModal({ appt, onClose, onConfirmCancel, onConfirmReschedule, onDiscard }) {
+  const [newDate, setNewDate] = useState(appt?.date || todayISO());
+  const [newTime, setNewTime] = useState(appt?.time || "09:00");
+  if (!appt || !appt.requestPending) return null;
+  const isCancel = appt.requestPending.type === "cancelamento";
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={{ ...styles.modal, maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Solicitação do médico</h2>
+          <button className="btn tap" style={styles.iconBtn} onClick={onClose} aria-label="Fechar">
+            <X size={18} color="#5B5A52" />
+          </button>
+        </div>
+        <div style={styles.form}>
+          <p style={{ fontSize: 13.5, color: "#5B5A52", margin: 0 }}>
+            <strong>{appt.clientName}</strong> · {appt.doctorName} · {formatDatePt(appt.date)} às {appt.time}
+          </p>
+          <div style={{ ...styles.inlineNotice, ...styles.inlineNoticeStatic }}>
+            <AlertTriangle size={14} color="#8A5A15" style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              Pedido de <strong>{isCancel ? "cancelamento" : "remarcação"}</strong>: "{appt.requestPending.reason}"
+            </span>
+          </div>
+
+          {isCancel ? (
+            <button className="btn tap" style={styles.deleteBtn} onClick={() => onConfirmCancel(appt.id)}>
+              Confirmar cancelamento
+            </button>
+          ) : (
+            <>
+              <div style={styles.row2}>
+                <label style={styles.label}>
+                  Nova data
+                  <input type="date" style={styles.input} value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                </label>
+                <label style={styles.label}>
+                  Novo horário
+                  <input type="time" style={styles.input} value={newTime} onChange={(e) => setNewTime(e.target.value)} />
+                </label>
+              </div>
+              <button
+                className="btn tap"
+                style={styles.submitBtn}
+                onClick={() => onConfirmReschedule(appt.id, newDate, newTime)}
+              >
+                Confirmar nova data e notificar médico
+              </button>
+            </>
+          )}
+          <button className="btn tap" style={styles.cancelBtn} onClick={() => onDiscard(appt.id)}>
+            Descartar solicitação (manter como estava)
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -539,6 +901,19 @@ function FormModal({ form, setForm, doctors, onClose, onSubmit, isEditing, onOpe
                 {FORMAS_PAGAMENTO.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
             </label>
+
+            {form.paymentMethod === "Convênio" && (
+              <label style={styles.label}>
+                Qual convênio?
+                <input
+                  style={styles.input}
+                  value={form.convenioName}
+                  onChange={(e) => upd("convenioName", e.target.value)}
+                  placeholder="Ex: Unimed, Bradesco Saúde..."
+                  required
+                />
+              </label>
+            )}
 
             <label style={styles.label}>
               Situação do pagamento
@@ -768,6 +1143,18 @@ const styles = {
   savingTag: { fontSize: 11, color: "#8A8A82" },
   switchBtn: { background: "#fff", border: "1px solid #E3E1D9", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, color: "#5B5A52" },
   errorBanner: { background: "#FBE9E7", color: "#A03B2E", padding: "10px 12px", borderRadius: 10, fontSize: 13, marginBottom: 12 },
+  pendingBanner: { display: "flex", alignItems: "flex-start", gap: 8, background: "#FBF0DE", color: "#8A5A15", padding: "10px 12px", borderRadius: 10, fontSize: 12.5, marginBottom: 12, lineHeight: 1.4 },
+  cardPending: { background: "#FFFDF5", border: "1px solid #EEDFA0" },
+  cardCancelled: { background: "#FDF4F2", border: "1px solid #F3C9C2" },
+  expandPanel: { display: "flex", flexDirection: "column", gap: 4, background: "#FAF9F5", borderRadius: 8, padding: "8px 10px", marginTop: 8, fontSize: 12.5, color: "#5B5A52" },
+  expandRow: { display: "flex", justifyContent: "space-between", gap: 10 },
+  inlineNotice: { display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#8A5A15", marginTop: 8, lineHeight: 1.4 },
+  inlineNoticeDanger: { color: "#A03B2E" },
+  inlineNoticeInfo: { color: "#2F6F63" },
+  inlineNoticeStatic: { marginTop: 0, background: "#FBF0DE", padding: "9px 10px", borderRadius: 9 },
+  resolveBtn: { marginTop: 8, background: "#233B34", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700 },
+  requestActionBtn: { display: "flex", alignItems: "center", gap: 6, marginTop: 9, background: "#F7F6F1", border: "1px solid #ECEAE1", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: "#5B5A52" },
+  noticeOkBtn: { display: "block", marginTop: 6, background: "#233B34", color: "#fff", border: "none", borderRadius: 7, padding: "6px 10px", fontSize: 11.5, fontWeight: 700 },
   toolbar: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 8, flexWrap: "wrap" },
   dateNav: { display: "flex", alignItems: "center", gap: 6 },
   iconBtn: { width: 34, height: 34, borderRadius: 9, background: "#fff", border: "1px solid #E3E1D9", display: "flex", alignItems: "center", justifyContent: "center" },
