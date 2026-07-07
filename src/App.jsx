@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, X, Calendar, Search, Check, Clock, CircleDollarSign, StickyNote, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Stethoscope, ClipboardList, Lock, Users, ShieldCheck, Bell, AlertTriangle, RefreshCw, Ban } from "lucide-react";
+import { Plus, X, Calendar, Search, Check, Clock, CircleDollarSign, StickyNote, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Stethoscope, ClipboardList, Lock, Users, ShieldCheck, Bell, AlertTriangle, RefreshCw, Ban, PieChart, Download, FileText, ArrowLeft } from "lucide-react";
+import jsPDF from "jspdf";
 
 const STORAGE_KEY = "clinica:consultas";
 const DOCTORS_KEY = "clinica:medicos";
@@ -66,6 +67,7 @@ export default function App() {
   const [selectedDoctorView, setSelectedDoctorView] = useState(null);
   const [requestModalFor, setRequestModalFor] = useState(null); // id da consulta (médico solicitando)
   const [resolveModalFor, setResolveModalFor] = useState(null); // id da consulta (secretária resolvendo)
+  const [financeiroOpen, setFinanceiroOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -154,7 +156,13 @@ export default function App() {
   function handleSubmit(e) {
     e.preventDefault();
     if (!form.clientName.trim() || !form.date || !form.time || !form.doctorName) return;
-    const record = { ...form, id: form.id || (Date.now().toString(36) + Math.random().toString(36).slice(2)) };
+    const valorPagoFinal =
+      form.paymentStatus === "pago" ? form.valorTotal : form.paymentStatus === "pendente" ? "0" : form.valorPago;
+    const record = {
+      ...form,
+      valorPago: valorPagoFinal,
+      id: form.id || (Date.now().toString(36) + Math.random().toString(36).slice(2)),
+    };
     let next;
     if (form.id) {
       next = appointments.map((a) => (a.id === form.id ? record : a));
@@ -317,31 +325,32 @@ export default function App() {
               setRole(null);
               setSelectedDoctorView(null);
               setDoctorPickerOpen(false);
+              setFinanceiroOpen(false);
             }}
             onSwitchDoctor={() => setDoctorPickerOpen(true)}
             saving={saving}
             onOpenDoctors={() => setDoctorManagerOpen(true)}
             onOpenPassword={() => setPasswordModal("change")}
+            onOpenFinanceiro={() => setFinanceiroOpen(true)}
+            financeiroOpen={financeiroOpen}
+            appointments={appointments}
+            selectedDoctorViewForBell={selectedDoctorView}
+            onOpenResolveFromBell={(id) => setResolveModalFor(id)}
+            onDismissNoticeFromBell={(id) => dismissDoctorNotice(id)}
           />
 
           {error && <div style={styles.errorBanner}>{error}</div>}
 
-          {role === "secretaria" && pendingRequestsCount > 0 && (
-            <div style={styles.pendingBanner}>
-              <Bell size={15} color="#8A5A15" style={{ flexShrink: 0 }} />
-              <span>
-                {pendingRequestsCount} solicitação(ões) de médico(s) aguardando sua análise. Toque em "Ver todas as datas" se não encontrar a consulta destacada em amarelo.
-              </span>
-            </div>
-          )}
-
-          {role === "chefe" && doctorNoticesCount > 0 && (
-            <div style={styles.pendingBanner}>
-              <Bell size={15} color="#8A5A15" style={{ flexShrink: 0 }} />
-              <span>Você tem {doctorNoticesCount} atualização(ões) sobre suas solicitações — veja destacado abaixo.</span>
-            </div>
-          )}
-
+          {financeiroOpen ? (
+            <FinanceiroScreen
+              appointments={appointments}
+              doctors={doctors}
+              role={role}
+              selectedDoctorView={selectedDoctorView}
+              onBack={() => setFinanceiroOpen(false)}
+            />
+          ) : (
+            <>
           <div style={styles.toolbar}>
             <div style={styles.dateNav}>
               <button className="btn tap" style={styles.iconBtn} onClick={() => shiftDate(-1)} aria-label="Dia anterior">
@@ -442,6 +451,8 @@ export default function App() {
               <span>Nova consulta</span>
             </button>
           )}
+            </>
+          )}
         </div>
       )}
 
@@ -538,7 +549,28 @@ function RoleSelect({ onSelectSecretaria, onSelectChefe }) {
   );
 }
 
-function Header({ role, selectedDoctorView, onSwitchRole, onSwitchDoctor, saving, onOpenDoctors, onOpenPassword }) {
+function Header({
+  role,
+  selectedDoctorView,
+  onSwitchRole,
+  onSwitchDoctor,
+  saving,
+  onOpenDoctors,
+  onOpenPassword,
+  onOpenFinanceiro,
+  financeiroOpen,
+  appointments,
+  selectedDoctorViewForBell,
+  onOpenResolveFromBell,
+  onDismissNoticeFromBell,
+}) {
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  const notifItems =
+    role === "secretaria"
+      ? appointments.filter((a) => a.requestPending).map((a) => ({ kind: "pending", appt: a }))
+      : appointments.filter((a) => a.doctorName === selectedDoctorViewForBell && a.doctorNotice).map((a) => ({ kind: "notice", appt: a }));
+
   return (
     <div style={styles.header}>
       <div>
@@ -547,17 +579,89 @@ function Header({ role, selectedDoctorView, onSwitchRole, onSwitchDoctor, saving
           {role === "chefe" ? `Agenda do Doutor(a) ${selectedDoctorView}` : "Agenda da clínica"}
         </h1>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, position: "relative" }}>
         {saving && <span style={styles.savingTag}>salvando...</span>}
+
+        <button
+          className="btn tap"
+          style={{ ...styles.iconBtn, ...(financeiroOpen ? styles.iconBtnActive : {}) }}
+          onClick={onOpenFinanceiro}
+          aria-label="Financeiro"
+        >
+          <PieChart size={16} color={financeiroOpen ? "#fff" : "#5B5A52"} />
+        </button>
+
         {role === "secretaria" && (
-          <>
-            <button className="btn tap" style={styles.iconBtn} onClick={onOpenDoctors} aria-label="Gerenciar médicos">
-              <Users size={16} color="#5B5A52" />
-            </button>
-            <button className="btn tap" style={styles.iconBtn} onClick={onOpenPassword} aria-label="Trocar senha">
-              <Lock size={16} color="#5B5A52" />
-            </button>
-          </>
+          <button className="btn tap" style={styles.iconBtn} onClick={onOpenDoctors} aria-label="Gerenciar médicos">
+            <Users size={16} color="#5B5A52" />
+          </button>
+        )}
+
+        <div style={{ position: "relative" }}>
+          <button className="btn tap" style={styles.iconBtn} onClick={() => setNotifOpen((v) => !v)} aria-label="Notificações">
+            <Bell size={16} color="#5B5A52" />
+            {notifItems.length > 0 && <span style={styles.bellDot}>{notifItems.length}</span>}
+          </button>
+          {notifOpen && (
+            <div style={styles.notifDropdown}>
+              <div style={styles.notifDropdownHeader}>
+                <span>Notificações</span>
+                <button className="btn tap" onClick={() => setNotifOpen(false)} aria-label="Fechar">
+                  <X size={15} color="#8A8A82" />
+                </button>
+              </div>
+              {notifItems.length === 0 ? (
+                <div style={styles.emptyNotif}>Nenhuma notificação por aqui.</div>
+              ) : (
+                notifItems.map(({ kind, appt }) => (
+                  <div key={appt.id} style={styles.notifItem}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "#233B34" }}>{appt.clientName}</div>
+                    <div style={{ fontSize: 11.5, color: "#8A8A82", marginBottom: 4 }}>
+                      {formatDatePt(appt.date)} às {appt.time}
+                    </div>
+                    {kind === "pending" ? (
+                      <>
+                        <div style={{ fontSize: 12, color: "#8A5A15" }}>
+                          Pediu {appt.requestPending.type === "cancelamento" ? "cancelamento" : "remarcação"}: "{appt.requestPending.reason}"
+                        </div>
+                        <button
+                          className="btn tap"
+                          style={styles.notifActionBtn}
+                          onClick={() => {
+                            onOpenResolveFromBell(appt.id);
+                            setNotifOpen(false);
+                          }}
+                        >
+                          Analisar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 12, color: "#2F6F63" }}>
+                          {appt.doctorNotice.type === "cancelada"
+                            ? "Seu pedido de cancelamento foi confirmado."
+                            : `Remarcada para ${formatDatePt(appt.doctorNotice.newDate)} às ${appt.doctorNotice.newTime}.`}
+                        </div>
+                        <button
+                          className="btn tap"
+                          style={styles.notifActionBtn}
+                          onClick={() => onDismissNoticeFromBell(appt.id)}
+                        >
+                          OK, entendi
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {role === "secretaria" && (
+          <button className="btn tap" style={styles.iconBtn} onClick={onOpenPassword} aria-label="Trocar senha">
+            <Lock size={16} color="#5B5A52" />
+          </button>
         )}
         {role === "chefe" && (
           <button className="btn tap" style={styles.switchBtn} onClick={onSwitchDoctor}>trocar médico</button>
@@ -938,18 +1042,19 @@ function FormModal({ form, setForm, doctors, onClose, onSubmit, isEditing, onOpe
               </div>
             </label>
 
-            {form.paymentStatus !== "pago" && (
-              <div style={styles.row2}>
-                <label style={styles.label}>
-                  Valor total (R$)
-                  <input
-                    type="number" min="0" step="0.01"
-                    style={styles.input}
-                    value={form.valorTotal}
-                    onChange={(e) => upd("valorTotal", e.target.value)}
-                    placeholder="0,00"
-                  />
-                </label>
+            <div style={styles.row2}>
+              <label style={styles.label}>
+                Valor da consulta (R$)
+                <input
+                  type="number" min="0" step="0.01"
+                  style={styles.input}
+                  value={form.valorTotal}
+                  onChange={(e) => upd("valorTotal", e.target.value)}
+                  placeholder="0,00"
+                  required
+                />
+              </label>
+              {form.paymentStatus === "parcial" && (
                 <label style={styles.label}>
                   Valor já pago (R$)
                   <input
@@ -958,10 +1063,11 @@ function FormModal({ form, setForm, doctors, onClose, onSubmit, isEditing, onOpe
                     value={form.valorPago}
                     onChange={(e) => upd("valorPago", e.target.value)}
                     placeholder="0,00"
+                    required
                   />
                 </label>
-              </div>
-            )}
+              )}
+            </div>
 
             <label style={styles.label}>
               Anotações
@@ -1044,6 +1150,264 @@ function DoctorManagerModal({ doctors, onAdd, onRemove, onClose }) {
             </button>
           </form>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function formatBRL(n) {
+  return (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatMonthPt(yyyyMm) {
+  const meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  const [y, m] = yyyyMm.split("-");
+  return `${meses[parseInt(m, 10) - 1]} de ${y}`;
+}
+
+function sumField(list, field) {
+  return list.reduce((s, a) => s + (parseFloat(a[field]) || 0), 0);
+}
+
+function exportCSV(rows, filename) {
+  const header = ["Data", "Horário", "Cliente", "Médico", "Forma de pagamento", "Convênio", "Status", "Valor total", "Valor pago", "Anotações"];
+  const csvRows = [
+    header,
+    ...rows.map((a) => [
+      formatDatePt(a.date),
+      a.time,
+      a.clientName,
+      a.doctorName,
+      a.paymentMethod,
+      a.convenioName || "",
+      STATUS_STYLES[a.paymentStatus]?.label || a.paymentStatus,
+      (a.valorTotal || "0").toString().replace(".", ","),
+      (a.valorPago || "0").toString().replace(".", ","),
+      (a.notes || "").replace(/\n/g, " "),
+    ]),
+  ];
+  const csvContent = csvRows.map((r) => r.map((f) => `"${String(f).replace(/"/g, '""')}"`).join(";")).join("\n");
+  const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function exportPDF({ title, subtitle, totals, byMethod, byStatus, byDoctor, filename }) {
+  const doc = new jsPDF();
+  let y = 20;
+  doc.setFontSize(16);
+  doc.text(title, 14, y);
+  y += 7;
+  doc.setFontSize(11);
+  doc.setTextColor(120);
+  doc.text(subtitle, 14, y);
+  doc.setTextColor(0);
+  y += 12;
+
+  function section(label, lines) {
+    if (y > 265) { doc.addPage(); y = 20; }
+    doc.setFontSize(13);
+    doc.text(label, 14, y);
+    y += 7;
+    doc.setFontSize(11);
+    lines.forEach((line) => {
+      if (y > 280) { doc.addPage(); y = 20; }
+      doc.text(line, 14, y);
+      y += 6.5;
+    });
+    y += 6;
+  }
+
+  section("Resumo", totals);
+  section("Por forma de pagamento", byMethod);
+  section("Por situação de pagamento", byStatus);
+  if (byDoctor && byDoctor.length) section("Por médico", byDoctor);
+
+  doc.save(filename);
+}
+
+function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onBack }) {
+  const [financeMonth, setFinanceMonth] = useState(todayISO().slice(0, 7));
+  const [doctorFilterFinance, setDoctorFilterFinance] = useState("todos");
+
+  const effectiveDoctor = role === "chefe" ? selectedDoctorView : doctorFilterFinance;
+
+  const monthAppts = useMemo(
+    () =>
+      appointments.filter(
+        (a) => !a.cancelled && a.date.startsWith(financeMonth) && (effectiveDoctor === "todos" || a.doctorName === effectiveDoctor)
+      ),
+    [appointments, financeMonth, effectiveDoctor]
+  );
+
+  const todayAppts = useMemo(
+    () =>
+      appointments.filter(
+        (a) => !a.cancelled && a.date === todayISO() && (effectiveDoctor === "todos" || a.doctorName === effectiveDoctor)
+      ),
+    [appointments, effectiveDoctor]
+  );
+
+  const totalAgendadoMes = sumField(monthAppts, "valorTotal");
+  const totalRecebidoMes = sumField(monthAppts, "valorPago");
+  const totalPendenteMes = Math.max(totalAgendadoMes - totalRecebidoMes, 0);
+  const totalRecebidoHoje = sumField(todayAppts, "valorPago");
+
+  const byMethod = useMemo(() => {
+    const map = new Map();
+    for (const a of monthAppts) {
+      const key = a.paymentMethod;
+      if (!map.has(key)) map.set(key, { count: 0, recebido: 0 });
+      const cur = map.get(key);
+      cur.count += 1;
+      cur.recebido += parseFloat(a.valorPago) || 0;
+    }
+    return Array.from(map.entries());
+  }, [monthAppts]);
+
+  const byStatus = useMemo(() => {
+    const map = new Map();
+    for (const a of monthAppts) {
+      const key = a.paymentStatus;
+      if (!map.has(key)) map.set(key, { count: 0, agendado: 0 });
+      const cur = map.get(key);
+      cur.count += 1;
+      cur.agendado += parseFloat(a.valorTotal) || 0;
+    }
+    return Array.from(map.entries());
+  }, [monthAppts]);
+
+  const byDoctor = useMemo(() => {
+    if (role !== "secretaria" || effectiveDoctor !== "todos") return [];
+    const map = new Map();
+    for (const a of monthAppts) {
+      const key = a.doctorName || "Sem médico";
+      if (!map.has(key)) map.set(key, { count: 0, recebido: 0 });
+      const cur = map.get(key);
+      cur.count += 1;
+      cur.recebido += parseFloat(a.valorPago) || 0;
+    }
+    return Array.from(map.entries());
+  }, [monthAppts, role, effectiveDoctor]);
+
+  const periodLabel = `${formatMonthPt(financeMonth)}${effectiveDoctor !== "todos" ? ` · ${effectiveDoctor}` : ""}`;
+
+  function handleExportCSV() {
+    exportCSV(monthAppts, `financeiro-${financeMonth}.csv`);
+  }
+
+  function handleExportPDF() {
+    exportPDF({
+      title: "Relatório financeiro — Agenda da clínica",
+      subtitle: periodLabel,
+      totals: [
+        `Total agendado no mês: R$ ${formatBRL(totalAgendadoMes)}`,
+        `Total recebido no mês: R$ ${formatBRL(totalRecebidoMes)}`,
+        `Total pendente no mês: R$ ${formatBRL(totalPendenteMes)}`,
+        `Recebido hoje: R$ ${formatBRL(totalRecebidoHoje)}`,
+      ],
+      byMethod: byMethod.map(([k, v]) => `${k}: ${v.count} consulta(s) — R$ ${formatBRL(v.recebido)} recebido`),
+      byStatus: byStatus.map(([k, v]) => `${STATUS_STYLES[k]?.label || k}: ${v.count} consulta(s) — R$ ${formatBRL(v.agendado)} agendado`),
+      byDoctor: byDoctor.map(([k, v]) => `${k}: ${v.count} consulta(s) — R$ ${formatBRL(v.recebido)} recebido`),
+      filename: `financeiro-${financeMonth}.pdf`,
+    });
+  }
+
+  return (
+    <div>
+      <button className="btn tap" style={styles.backLink} onClick={onBack}>
+        <ArrowLeft size={15} color="#5B5A52" /> Voltar para a agenda
+      </button>
+
+      <div style={styles.financeFilters}>
+        <label style={styles.label}>
+          Mês
+          <input
+            type="month"
+            style={styles.input}
+            value={financeMonth}
+            onChange={(e) => setFinanceMonth(e.target.value)}
+          />
+        </label>
+        {role === "secretaria" && doctors.length > 0 && (
+          <label style={styles.label}>
+            Médico
+            <select style={styles.input} value={doctorFilterFinance} onChange={(e) => setDoctorFilterFinance(e.target.value)}>
+              <option value="todos">Todos os médicos</option>
+              {doctors.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+
+      <div style={styles.statGrid}>
+        <div style={styles.statCard}>
+          <div style={styles.statCardLabel}>Recebido hoje</div>
+          <div style={styles.statCardValue}>R$ {formatBRL(totalRecebidoHoje)}</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={styles.statCardLabel}>Recebido no mês</div>
+          <div style={styles.statCardValue}>R$ {formatBRL(totalRecebidoMes)}</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={styles.statCardLabel}>Agendado no mês</div>
+          <div style={styles.statCardValue}>R$ {formatBRL(totalAgendadoMes)}</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={styles.statCardLabel}>Falta receber</div>
+          <div style={{ ...styles.statCardValue, color: "#A03B2E" }}>R$ {formatBRL(totalPendenteMes)}</div>
+        </div>
+      </div>
+
+      <div style={styles.financeSection}>
+        <h3 style={styles.financeSectionTitle}>Por forma de pagamento</h3>
+        {byMethod.length === 0 ? (
+          <p style={styles.financeEmpty}>Nenhuma consulta neste período.</p>
+        ) : (
+          byMethod.map(([k, v]) => (
+            <div key={k} style={styles.financeRow}>
+              <span>{k} <span style={{ color: "#8A8A82" }}>({v.count})</span></span>
+              <strong>R$ {formatBRL(v.recebido)}</strong>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div style={styles.financeSection}>
+        <h3 style={styles.financeSectionTitle}>Por situação de pagamento</h3>
+        {byStatus.map(([k, v]) => (
+          <div key={k} style={styles.financeRow}>
+            <span>{STATUS_STYLES[k]?.label || k} <span style={{ color: "#8A8A82" }}>({v.count})</span></span>
+            <strong>R$ {formatBRL(v.agendado)}</strong>
+          </div>
+        ))}
+      </div>
+
+      {byDoctor.length > 0 && (
+        <div style={styles.financeSection}>
+          <h3 style={styles.financeSectionTitle}>Por médico</h3>
+          {byDoctor.map(([k, v]) => (
+            <div key={k} style={styles.financeRow}>
+              <span>{k} <span style={{ color: "#8A8A82" }}>({v.count})</span></span>
+              <strong>R$ {formatBRL(v.recebido)}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={styles.exportRow}>
+        <button className="btn tap" style={styles.exportBtn} onClick={handleExportCSV}>
+          <Download size={15} color="#233B34" /> Baixar Excel
+        </button>
+        <button className="btn tap" style={styles.exportBtn} onClick={handleExportPDF}>
+          <FileText size={15} color="#233B34" /> Baixar PDF
+        </button>
       </div>
     </div>
   );
@@ -1142,6 +1506,13 @@ const styles = {
   headerTitle: { fontFamily: FONT_DISPLAY, fontSize: 26, fontWeight: 700, margin: "2px 0 0", color: "#233B34" },
   savingTag: { fontSize: 11, color: "#8A8A82" },
   switchBtn: { background: "#fff", border: "1px solid #E3E1D9", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, color: "#5B5A52" },
+  iconBtnActive: { background: "#233B34", borderColor: "#233B34" },
+  bellDot: { position: "absolute", top: -4, right: -4, background: "#C24A38", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 99, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1 },
+  notifDropdown: { position: "absolute", top: 42, right: 0, width: 300, maxHeight: 360, overflowY: "auto", background: "#fff", border: "1px solid #E3E1D9", borderRadius: 12, boxShadow: "0 12px 32px rgba(35,59,52,0.16)", zIndex: 60 },
+  notifDropdownHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: "1px solid #ECEAE1", fontSize: 12.5, fontWeight: 700, color: "#233B34" },
+  emptyNotif: { padding: "20px 14px", fontSize: 12.5, color: "#8A8A82", textAlign: "center" },
+  notifItem: { padding: "10px 12px", borderBottom: "1px solid #F3F2ED" },
+  notifActionBtn: { marginTop: 6, background: "#233B34", color: "#fff", border: "none", borderRadius: 7, padding: "5px 10px", fontSize: 11.5, fontWeight: 700 },
   errorBanner: { background: "#FBE9E7", color: "#A03B2E", padding: "10px 12px", borderRadius: 10, fontSize: 13, marginBottom: 12 },
   pendingBanner: { display: "flex", alignItems: "flex-start", gap: 8, background: "#FBF0DE", color: "#8A5A15", padding: "10px 12px", borderRadius: 10, fontSize: 12.5, marginBottom: 12, lineHeight: 1.4 },
   cardPending: { background: "#FFFDF5", border: "1px solid #EEDFA0" },
@@ -1199,4 +1570,16 @@ const styles = {
   deleteBtn: { flex: 1, background: "#C24A38", color: "#fff", border: "none", borderRadius: 9, padding: "11px", fontSize: 13.5, fontWeight: 700 },
   doctorRow: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#FAF9F5", border: "1px solid #ECEAE1", borderRadius: 9, padding: "9px 12px" },
   addDoctorBtn: { width: 44, background: "#2F6F63", border: "none", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center" },
+  backLink: { display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", padding: "4px 0", fontSize: 13, color: "#5B5A52", marginBottom: 14, fontWeight: 600 },
+  financeFilters: { display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" },
+  statGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 },
+  statCard: { background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "14px 14px" },
+  statCardLabel: { fontSize: 11.5, color: "#8A8A82", fontWeight: 600, marginBottom: 5 },
+  statCardValue: { fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 700, color: "#233B34" },
+  financeSection: { background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "14px 16px", marginBottom: 12 },
+  financeSectionTitle: { fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 700, color: "#233B34", margin: "0 0 10px" },
+  financeRow: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#3A3934", padding: "6px 0", borderBottom: "1px solid #F3F2ED" },
+  financeEmpty: { fontSize: 13, color: "#8A8A82", margin: 0 },
+  exportRow: { display: "flex", gap: 10, marginTop: 6, marginBottom: 100 },
+  exportBtn: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "#fff", border: "1px solid #E3E1D9", borderRadius: 10, padding: "12px", fontSize: 13.5, fontWeight: 700, color: "#233B34" },
 };
