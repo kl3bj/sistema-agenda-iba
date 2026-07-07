@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Plus, X, Calendar, Search, Check, Clock, CircleDollarSign, StickyNote, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Stethoscope, ClipboardList, Lock, Users, ShieldCheck, Bell, AlertTriangle, RefreshCw, Ban, PieChart, Download, FileText, ArrowLeft } from "lucide-react";
 import jsPDF from "jspdf";
+import { supabase } from "./supabaseClient.js";
 
 const STORAGE_KEY = "clinica:consultas";
 const DOCTORS_KEY = "clinica:medicos";
@@ -53,7 +54,6 @@ export default function App() {
   const [role, setRole] = useState(null); // 'secretaria' | 'chefe'
   const [appointments, setAppointments] = useState([]);
   const [doctors, setDoctors] = useState([]);
-  const [passwordStored, setPasswordStored] = useState(undefined); // undefined = ainda não sei, null = não existe, string = existe
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -64,7 +64,7 @@ export default function App() {
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [passwordModal, setPasswordModal] = useState(null); // 'create' | 'enter' | 'change' | null
+  const [passwordModal, setPasswordModal] = useState(null); // 'change' | null
   const [doctorManagerOpen, setDoctorManagerOpen] = useState(false);
   const [doctorPickerOpen, setDoctorPickerOpen] = useState(false);
   const [selectedDoctorView, setSelectedDoctorView] = useState(null);
@@ -72,19 +72,40 @@ export default function App() {
   const [resolveModalFor, setResolveModalFor] = useState(null); // id da consulta (secretária resolvendo)
   const [financeiroOpen, setFinanceiroOpen] = useState(false);
 
+  // Autenticação da secretária (Supabase Auth)
+  const [session, setSession] = useState(undefined); // undefined = carregando, null = deslogada, objeto = logada
+  const [secretaryName, setSecretaryName] = useState("");
+  const [authView, setAuthView] = useState(null); // null | 'login' | 'signup' | 'forgot' | 'sent'
+  const [recoveryMode, setRecoveryMode] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null);
+      setSecretaryName(data.session?.user?.user_metadata?.name || "");
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setRecoveryMode(true);
+        return;
+      }
+      setSession(newSession);
+      setSecretaryName(newSession?.user?.user_metadata?.name || "");
+      if (!newSession) setRole((r) => (r === "secretaria" ? null : r));
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
     async function loadAll(showLoading) {
-      const [apptRes, docRes, pwdRes] = await Promise.allSettled([
+      const [apptRes, docRes] = await Promise.allSettled([
         window.storage.get(STORAGE_KEY, true),
         window.storage.get(DOCTORS_KEY, true),
-        window.storage.get(PASSWORD_KEY, true),
       ]);
       if (!mounted) return;
       setAppointments(apptRes.status === "fulfilled" && apptRes.value ? JSON.parse(apptRes.value.value) : []);
       setDoctors(docRes.status === "fulfilled" && docRes.value ? JSON.parse(docRes.value.value) : []);
-      setPasswordStored(pwdRes.status === "fulfilled" && pwdRes.value ? pwdRes.value.value : null);
       if (showLoading) setLoadingInitial(false);
     }
 
@@ -123,10 +144,13 @@ export default function App() {
     }
   }
 
-  async function savePassword(pwd) {
-    const result = await window.storage.set(PASSWORD_KEY, pwd, true);
-    if (!result) throw new Error("sem resultado");
-    setPasswordStored(pwd);
+  async function changePassword(oldPwd, newPwd) {
+    const email = session?.user?.email;
+    if (!email) return false;
+    const { error: reauthErr } = await supabase.auth.signInWithPassword({ email, password: oldPwd });
+    if (reauthErr) return false;
+    const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
+    return !updateErr;
   }
 
   function addDoctor(name) {
@@ -166,12 +190,23 @@ export default function App() {
   function handleSubmit(e) {
     e.preventDefault();
     if (!form.clientName.trim() || !form.date || !form.time || !form.doctorName) return;
+    const hasConflict = appointments.some(
+      (a) =>
+        a.id !== form.id &&
+        !a.cancelled &&
+        a.doctorName === form.doctorName &&
+        a.date === form.date &&
+        a.time === form.time
+    );
+    if (hasConflict) return;
     const valorPagoFinal =
       form.paymentStatus === "pago" ? form.valorTotal : form.paymentStatus === "pendente" ? "0" : form.valorPago;
     const record = {
       ...form,
       valorPago: valorPagoFinal,
       id: form.id || (Date.now().toString(36) + Math.random().toString(36).slice(2)),
+      createdBy: form.id ? (appointments.find((a) => a.id === form.id)?.createdBy || secretaryName) : secretaryName,
+      lastEditedBy: secretaryName,
     };
     let next;
     if (form.id) {
@@ -284,10 +319,10 @@ export default function App() {
   }
 
   function requestSecretariaAccess() {
-    if (passwordStored) {
-      setPasswordModal("enter");
+    if (session) {
+      setRole("secretaria");
     } else {
-      setPasswordModal("create");
+      setAuthView("login");
     }
   }
 
@@ -306,10 +341,29 @@ export default function App() {
         ::-webkit-scrollbar { width: 8px; }
       `}</style>
 
-      {loadingInitial ? (
+      {recoveryMode ? (
+        <ResetPasswordScreen
+          onDone={async () => {
+            await supabase.auth.signOut();
+            setRecoveryMode(false);
+            setRole(null);
+            setAuthView("login");
+          }}
+        />
+      ) : loadingInitial || session === undefined ? (
         <div style={styles.roleWrap}>
           <span style={{ color: "#8A8A82", fontSize: 14 }}>Carregando...</span>
         </div>
+      ) : authView ? (
+        <SecretariaAuthScreen
+          view={authView}
+          setView={setAuthView}
+          onSuccess={() => {
+            setAuthView(null);
+            setRole("secretaria");
+          }}
+          onCancel={() => setAuthView(null)}
+        />
       ) : doctorPickerOpen ? (
         <DoctorPickerScreen
           doctors={doctors}
@@ -331,7 +385,9 @@ export default function App() {
           <Header
             role={role}
             selectedDoctorView={selectedDoctorView}
-            onSwitchRole={() => {
+            secretaryName={secretaryName}
+            onSwitchRole={async () => {
+              if (role === "secretaria") await supabase.auth.signOut();
               setRole(null);
               setSelectedDoctorView(null);
               setDoctorPickerOpen(false);
@@ -471,6 +527,7 @@ export default function App() {
           form={form}
           setForm={setForm}
           doctors={doctors}
+          appointments={appointments}
           onClose={() => setFormOpen(false)}
           onSubmit={handleSubmit}
           isEditing={!!form.id}
@@ -516,24 +573,10 @@ export default function App() {
         <PasswordModal
           mode={passwordModal}
           onClose={() => setPasswordModal(null)}
-          onCreate={async (pwd) => {
-            await savePassword(pwd);
-            setPasswordModal(null);
-            setRole("secretaria");
-          }}
-          onEnter={(pwd) => {
-            if (pwd === passwordStored) {
-              setPasswordModal(null);
-              setRole("secretaria");
-              return true;
-            }
-            return false;
-          }}
           onChange={async (oldPwd, newPwd) => {
-            if (oldPwd !== passwordStored) return false;
-            await savePassword(newPwd);
-            setPasswordModal(null);
-            return true;
+            const ok = await changePassword(oldPwd, newPwd);
+            if (ok) setPasswordModal(null);
+            return ok;
           }}
         />
       )}
@@ -562,6 +605,7 @@ function RoleSelect({ onSelectSecretaria, onSelectChefe }) {
 function Header({
   role,
   selectedDoctorView,
+  secretaryName,
   onSwitchRole,
   onSwitchDoctor,
   saving,
@@ -584,7 +628,9 @@ function Header({
   return (
     <div style={styles.header}>
       <div>
-        <div style={styles.headerEyebrow}>{role === "secretaria" ? "Modo secretária" : "Agenda do médico"}</div>
+        <div style={styles.headerEyebrow}>
+          {role === "secretaria" ? `Modo secretária${secretaryName ? ` · ${secretaryName}` : ""}` : "Agenda do médico"}
+        </div>
         <h1 style={styles.headerTitle}>
           {role === "chefe" ? `Agenda do Doutor(a) ${selectedDoctorView}` : "Agenda da clínica"}
         </h1>
@@ -757,6 +803,9 @@ function AppointmentCard({ appt, role, editable, onEdit, onDelete, onRequestActi
             <div style={styles.expandRow}><span>Valor já pago</span><strong>{appt.valorPago ? `R$ ${appt.valorPago}` : "—"}</strong></div>
             {appt.paymentMethod === "Convênio" && (
               <div style={styles.expandRow}><span>Convênio</span><strong>{appt.convenioName || "—"}</strong></div>
+            )}
+            {role === "secretaria" && appt.createdBy && (
+              <div style={styles.expandRow}><span>Cadastrado por</span><strong>{appt.createdBy}</strong></div>
             )}
           </div>
         )}
@@ -957,10 +1006,23 @@ function ResolveRequestModal({ appt, onClose, onConfirmCancel, onConfirmReschedu
   );
 }
 
-function FormModal({ form, setForm, doctors, onClose, onSubmit, isEditing, onOpenDoctorManager }) {
+function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, isEditing, onOpenDoctorManager }) {
   function upd(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
   }
+
+  const conflict = useMemo(() => {
+    if (!form.doctorName || !form.date || !form.time) return null;
+    return appointments.find(
+      (a) =>
+        a.id !== form.id &&
+        !a.cancelled &&
+        a.doctorName === form.doctorName &&
+        a.date === form.date &&
+        a.time === form.time
+    );
+  }, [appointments, form.id, form.doctorName, form.date, form.time]);
+
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -1011,13 +1073,31 @@ function FormModal({ form, setForm, doctors, onClose, onSubmit, isEditing, onOpe
             <div style={styles.row2}>
               <label style={styles.label}>
                 Data
-                <input type="date" style={styles.input} value={form.date} onChange={(e) => upd("date", e.target.value)} required />
+                <input
+                  type="date"
+                  style={{ ...styles.input, ...(conflict ? styles.inputConflict : {}) }}
+                  value={form.date}
+                  onChange={(e) => upd("date", e.target.value)}
+                  required
+                />
               </label>
               <label style={styles.label}>
                 Horário
-                <input type="time" style={styles.input} value={form.time} onChange={(e) => upd("time", e.target.value)} required />
+                <input
+                  type="time"
+                  style={{ ...styles.input, ...(conflict ? styles.inputConflict : {}) }}
+                  value={form.time}
+                  onChange={(e) => upd("time", e.target.value)}
+                  required
+                />
               </label>
             </div>
+
+            {conflict && (
+              <div style={styles.errorBanner}>
+                ⚠️ {form.doctorName} já tem uma consulta marcada nesse dia e horário ({conflict.clientName}). Escolha outro horário ou verifique a agenda.
+              </div>
+            )}
 
             <label style={styles.label}>
               Forma de pagamento
@@ -1099,7 +1179,7 @@ function FormModal({ form, setForm, doctors, onClose, onSubmit, isEditing, onOpe
               />
             </label>
 
-            <button type="submit" className="btn tap" style={styles.submitBtn}>
+            <button type="submit" className="btn tap" style={{ ...styles.submitBtn, ...(conflict ? styles.submitBtnDisabled : {}) }} disabled={!!conflict}>
               {isEditing ? "Salvar alterações" : "Marcar consulta"}
             </button>
           </form>
@@ -1434,35 +1514,23 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
   );
 }
 
-function PasswordModal({ mode, onClose, onCreate, onEnter, onChange }) {
+function PasswordModal({ onClose, onChange }) {
   const [pwd, setPwd] = useState("");
   const [pwd2, setPwd2] = useState("");
   const [oldPwd, setOldPwd] = useState("");
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function submit(e) {
     e.preventDefault();
     setErr("");
-    if (mode === "create") {
-      if (pwd.length < 4) return setErr("Use uma senha com pelo menos 4 caracteres.");
-      if (pwd !== pwd2) return setErr("As senhas não coincidem.");
-      await onCreate(pwd);
-    } else if (mode === "enter") {
-      const ok = onEnter(pwd);
-      if (!ok) setErr("Senha incorreta. Tente de novo.");
-    } else if (mode === "change") {
-      if (pwd.length < 4) return setErr("A nova senha precisa de pelo menos 4 caracteres.");
-      if (pwd !== pwd2) return setErr("As senhas novas não coincidem.");
-      const ok = await onChange(oldPwd, pwd);
-      if (!ok) setErr("Senha atual incorreta.");
-    }
+    if (pwd.length < 4) return setErr("A nova senha precisa de pelo menos 4 caracteres.");
+    if (pwd !== pwd2) return setErr("As senhas novas não coincidem.");
+    setLoading(true);
+    const ok = await onChange(oldPwd, pwd);
+    setLoading(false);
+    if (!ok) setErr("Senha atual incorreta.");
   }
-
-  const titles = {
-    create: "Criar senha da secretária",
-    enter: "Digite a senha",
-    change: "Trocar senha",
-  };
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
@@ -1470,7 +1538,7 @@ function PasswordModal({ mode, onClose, onCreate, onEnter, onChange }) {
         <div style={styles.modalHeader}>
           <h2 style={styles.modalTitle}>
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <ShieldCheck size={19} color="#2F6F63" /> {titles[mode]}
+              <ShieldCheck size={19} color="#2F6F63" /> Trocar senha
             </span>
           </h2>
           <button className="btn tap" style={styles.iconBtn} onClick={onClose} aria-label="Fechar">
@@ -1478,39 +1546,234 @@ function PasswordModal({ mode, onClose, onCreate, onEnter, onChange }) {
           </button>
         </div>
         <form onSubmit={submit} style={styles.form}>
-          {mode === "create" && (
-            <p style={{ fontSize: 13, color: "#8A8A82", margin: "-4px 0 4px" }}>
-              É a primeira vez aqui. Crie uma senha para proteger o acesso da secretária.
-            </p>
-          )}
-          {mode === "change" && (
-            <label style={styles.label}>
-              Senha atual
-              <input type="password" style={styles.input} value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} required />
-            </label>
-          )}
-          {mode === "enter" ? (
-            <label style={styles.label}>
-              Senha
-              <input type="password" style={styles.input} value={pwd} onChange={(e) => setPwd(e.target.value)} required autoFocus />
-            </label>
-          ) : (
-            <>
-              <label style={styles.label}>
-                {mode === "change" ? "Nova senha" : "Senha"}
-                <input type="password" style={styles.input} value={pwd} onChange={(e) => setPwd(e.target.value)} required />
-              </label>
-              <label style={styles.label}>
-                Confirmar senha
-                <input type="password" style={styles.input} value={pwd2} onChange={(e) => setPwd2(e.target.value)} required />
-              </label>
-            </>
-          )}
+          <label style={styles.label}>
+            Senha atual
+            <input type="password" style={styles.input} value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} required />
+          </label>
+          <label style={styles.label}>
+            Nova senha
+            <input type="password" style={styles.input} value={pwd} onChange={(e) => setPwd(e.target.value)} required />
+          </label>
+          <label style={styles.label}>
+            Confirmar nova senha
+            <input type="password" style={styles.input} value={pwd2} onChange={(e) => setPwd2(e.target.value)} required />
+          </label>
           {err && <div style={styles.errorBanner}>{err}</div>}
-          <button type="submit" className="btn tap" style={styles.submitBtn}>
-            {mode === "create" ? "Criar e entrar" : mode === "enter" ? "Entrar" : "Salvar nova senha"}
+          <button type="submit" className="btn tap" style={styles.submitBtn} disabled={loading}>
+            {loading ? "Salvando..." : "Salvar nova senha"}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+async function lookupEmailByName(name) {
+  const { data, error } = await supabase
+    .from("secretarias")
+    .select("email")
+    .ilike("name", name.trim())
+    .maybeSingle();
+  if (error || !data) return null;
+  return data.email;
+}
+
+function SecretariaAuthScreen({ view, setView, onSuccess, onCancel }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const foundEmail = await lookupEmailByName(name);
+    if (!foundEmail) {
+      setLoading(false);
+      setError("Nome não encontrado. Confira o nome ou cadastre-se.");
+      return;
+    }
+    const { error: authErr } = await supabase.auth.signInWithPassword({ email: foundEmail, password });
+    setLoading(false);
+    if (authErr) {
+      setError("Senha incorreta.");
+      return;
+    }
+    onSuccess();
+  }
+
+  async function handleSignup(e) {
+    e.preventDefault();
+    setError("");
+    if (!name.trim() || !email.trim()) return setError("Preencha nome e e-mail.");
+    if (password.length < 4) return setError("A senha precisa de pelo menos 4 caracteres.");
+    if (password !== password2) return setError("As senhas não coincidem.");
+    setLoading(true);
+    const existing = await lookupEmailByName(name);
+    if (existing) {
+      setLoading(false);
+      setError("Esse nome já está cadastrado. Use outro nome ou faça login.");
+      return;
+    }
+    const { data, error: signErr } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { name: name.trim() } },
+    });
+    if (signErr) {
+      setLoading(false);
+      setError(signErr.message.includes("registered") ? "Esse e-mail já está cadastrado." : "Não foi possível cadastrar. Tente de novo.");
+      return;
+    }
+    await supabase.from("secretarias").insert({ name: name.trim(), email: email.trim() });
+    setLoading(false);
+    if (data.session) {
+      onSuccess();
+    } else {
+      setError("Cadastro feito! Confirme seu e-mail e depois faça login.");
+      setView("login");
+    }
+  }
+
+  async function handleForgot(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const foundEmail = await lookupEmailByName(name);
+    setLoading(false);
+    if (!foundEmail) {
+      setError("Nome não encontrado.");
+      return;
+    }
+    await supabase.auth.resetPasswordForEmail(foundEmail, { redirectTo: window.location.origin });
+    setView("sent");
+  }
+
+  return (
+    <div style={styles.roleWrap}>
+      <div style={styles.roleCard}>
+        <ShieldCheck size={30} color="#2F6F63" />
+        <h1 style={styles.roleTitle}>
+          {view === "login" && "Entrar como secretária"}
+          {view === "signup" && "Criar acesso da secretária"}
+          {view === "forgot" && "Esqueci minha senha"}
+          {view === "sent" && "E-mail enviado"}
+        </h1>
+
+        {view === "sent" ? (
+          <>
+            <p style={styles.roleSubtitle}>
+              Se o nome estiver cadastrado, enviamos um link para o e-mail cadastrado. Abra o e-mail e clique no link para criar uma nova senha.
+            </p>
+            <button className="btn tap" style={styles.roleBtnPrimary} onClick={() => setView("login")}>Voltar para o login</button>
+          </>
+        ) : (
+          <>
+            <p style={styles.roleSubtitle}>
+              {view === "login" && "Use seu nome e senha de sempre."}
+              {view === "signup" && "Primeiro acesso? Cadastre seu nome, e-mail e uma senha."}
+              {view === "forgot" && "Digite seu nome. Enviaremos um link para o e-mail cadastrado."}
+            </p>
+            <form onSubmit={view === "login" ? handleLogin : view === "signup" ? handleSignup : handleForgot} style={{ ...styles.form, textAlign: "left", padding: 0 }}>
+              <label style={styles.label}>
+                Nome
+                <input style={styles.input} value={name} onChange={(e) => setName(e.target.value)} required placeholder="Seu nome" />
+              </label>
+              {view === "signup" && (
+                <label style={styles.label}>
+                  E-mail (só para recuperar a senha)
+                  <input type="email" style={styles.input} value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="seu@email.com" />
+                </label>
+              )}
+              {view !== "forgot" && (
+                <label style={styles.label}>
+                  Senha
+                  <input type="password" style={styles.input} value={password} onChange={(e) => setPassword(e.target.value)} required />
+                </label>
+              )}
+              {view === "signup" && (
+                <label style={styles.label}>
+                  Confirmar senha
+                  <input type="password" style={styles.input} value={password2} onChange={(e) => setPassword2(e.target.value)} required />
+                </label>
+              )}
+              {error && <div style={styles.errorBanner}>{error}</div>}
+              <button type="submit" className="btn tap" style={styles.submitBtn} disabled={loading}>
+                {loading ? "Aguarde..." : view === "login" ? "Entrar" : view === "signup" ? "Criar e entrar" : "Enviar link"}
+              </button>
+            </form>
+
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              {view === "login" && (
+                <>
+                  <button className="btn tap" style={styles.switchBtn} onClick={() => { setError(""); setView("forgot"); }}>Esqueci minha senha</button>
+                  <button className="btn tap" style={styles.switchBtn} onClick={() => { setError(""); setView("signup"); }}>Primeiro acesso? Cadastre-se</button>
+                </>
+              )}
+              {view !== "login" && (
+                <button className="btn tap" style={styles.switchBtn} onClick={() => { setError(""); setView("login"); }}>Voltar para o login</button>
+              )}
+            </div>
+          </>
+        )}
+
+        <button className="btn tap" style={{ ...styles.switchBtn, marginTop: 10 }} onClick={onCancel}>voltar ao início</button>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordScreen({ onDone }) {
+  const [pwd, setPwd] = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setError("");
+    if (pwd.length < 4) return setError("Use uma senha com pelo menos 4 caracteres.");
+    if (pwd !== pwd2) return setError("As senhas não coincidem.");
+    setLoading(true);
+    const { error: updateErr } = await supabase.auth.updateUser({ password: pwd });
+    setLoading(false);
+    if (updateErr) {
+      setError("Não foi possível salvar a nova senha. Tente pedir o link de novo.");
+      return;
+    }
+    setDone(true);
+  }
+
+  return (
+    <div style={styles.roleWrap}>
+      <div style={styles.roleCard}>
+        <ShieldCheck size={30} color="#2F6F63" />
+        <h1 style={styles.roleTitle}>Criar nova senha</h1>
+        {done ? (
+          <>
+            <p style={styles.roleSubtitle}>Senha atualizada! Agora é só entrar de novo com a nova senha.</p>
+            <button className="btn tap" style={styles.roleBtnPrimary} onClick={onDone}>Ir para o login</button>
+          </>
+        ) : (
+          <form onSubmit={submit} style={{ ...styles.form, textAlign: "left", padding: 0 }}>
+            <label style={styles.label}>
+              Nova senha
+              <input type="password" style={styles.input} value={pwd} onChange={(e) => setPwd(e.target.value)} required />
+            </label>
+            <label style={styles.label}>
+              Confirmar nova senha
+              <input type="password" style={styles.input} value={pwd2} onChange={(e) => setPwd2(e.target.value)} required />
+            </label>
+            {error && <div style={styles.errorBanner}>{error}</div>}
+            <button type="submit" className="btn tap" style={styles.submitBtn} disabled={loading}>
+              {loading ? "Salvando..." : "Salvar nova senha"}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -1584,10 +1847,12 @@ const styles = {
   form: { display: "flex", flexDirection: "column", gap: 13, padding: "10px 18px 24px" },
   label: { display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5, fontWeight: 600, color: "#5B5A52" },
   input: { border: "1px solid #E3E1D9", borderRadius: 9, padding: "11px 12px", fontSize: 14.5, color: "#2B2A26", background: "#FDFCFA" },
+  inputConflict: { borderColor: "#C24A38", background: "#FDF4F2" },
   row2: { display: "flex", gap: 10 },
   statusOptions: { display: "flex", gap: 8, flexWrap: "wrap" },
   statusOption: { display: "flex", alignItems: "center", gap: 5, border: "1.5px solid", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700 },
   submitBtn: { background: "#233B34", color: "#fff", border: "none", borderRadius: 11, padding: "14px 16px", fontSize: 15, fontWeight: 700, marginTop: 6 },
+  submitBtnDisabled: { background: "#B0AD9F", cursor: "not-allowed" },
   cancelBtn: { flex: 1, background: "#F7F6F1", border: "1px solid #ECEAE1", borderRadius: 9, padding: "11px", fontSize: 13.5, fontWeight: 600, color: "#5B5A52" },
   deleteBtn: { flex: 1, background: "#C24A38", color: "#fff", border: "none", borderRadius: 9, padding: "11px", fontSize: 13.5, fontWeight: 700 },
   doctorRow: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#FAF9F5", border: "1px solid #ECEAE1", borderRadius: 9, padding: "9px 12px" },
