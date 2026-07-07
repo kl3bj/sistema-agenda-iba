@@ -8,6 +8,8 @@ const PASSWORD_KEY = "clinica:senha";
 
 const FORMAS_PAGAMENTO = ["Dinheiro", "Pix", "Cartão de débito", "Cartão de crédito", "Convênio", "Outro"];
 
+const TIPOS_CONSULTA = ["Consulta", "Retorno", "Avaliação", "Exame", "Procedimento", "Encaixe/Urgência"];
+
 const STATUS_STYLES = {
   pago: { label: "Pago", bg: "#E7F2EC", text: "#2F6F51", dot: "#3F8F65" },
   parcial: { label: "Falta parte", bg: "#FBF0DE", text: "#8A5A15", dot: "#D9932E" },
@@ -37,6 +39,7 @@ function emptyForm() {
     time: "09:00",
     clientName: "",
     doctorName: "",
+    appointmentType: TIPOS_CONSULTA[0],
     paymentMethod: FORMAS_PAGAMENTO[0],
     paymentStatus: "pendente",
     valorTotal: "",
@@ -149,6 +152,7 @@ export default function App() {
       time: appt.time,
       clientName: appt.clientName,
       doctorName: appt.doctorName || "",
+      appointmentType: appt.appointmentType || TIPOS_CONSULTA[0],
       paymentMethod: appt.paymentMethod,
       paymentStatus: appt.paymentStatus,
       valorTotal: appt.valorTotal ?? "",
@@ -730,6 +734,9 @@ function AppointmentCard({ appt, role, editable, onEdit, onDelete, onRequestActi
           />
         </div>
         <div style={styles.cardMetaRow}>
+          <span style={styles.typeBadge}>
+            <ClipboardList size={11} color="#2F6F63" /> {appt.appointmentType || "Consulta"}
+          </span>
           <span style={{ ...styles.statusBadge, background: st.bg, color: st.text }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: st.dot, display: "inline-block" }} />
             {st.label}
@@ -987,6 +994,13 @@ function FormModal({ form, setForm, doctors, onClose, onSubmit, isEditing, onOpe
             </label>
 
             <label style={styles.label}>
+              Tipo de consulta
+              <select style={styles.input} value={form.appointmentType} onChange={(e) => upd("appointmentType", e.target.value)}>
+                {TIPOS_CONSULTA.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+
+            <label style={styles.label}>
               Médico que vai atender
               <select style={styles.input} value={form.doctorName} onChange={(e) => upd("doctorName", e.target.value)} required>
                 <option value="" disabled>Selecione o médico</option>
@@ -1176,13 +1190,14 @@ function sumField(list, field) {
 }
 
 function exportCSV(rows, filename) {
-  const header = ["Data", "Horário", "Cliente", "Médico", "Forma de pagamento", "Convênio", "Status", "Valor total", "Valor pago", "Anotações"];
+  const header = ["Data", "Horário", "Cliente", "Tipo", "Médico", "Forma de pagamento", "Convênio", "Status", "Valor total", "Valor pago", "Anotações"];
   const csvRows = [
     header,
     ...rows.map((a) => [
       formatDatePt(a.date),
       a.time,
       a.clientName,
+      a.appointmentType || "Consulta",
       a.doctorName,
       a.paymentMethod,
       a.convenioName || "",
@@ -1550,6 +1565,7 @@ const styles = {
   cardName: { fontWeight: 700, fontSize: 15.5, color: "#233B34", marginBottom: 5 },
   cardMetaRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   statusBadge: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 99 },
+  typeBadge: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 99, background: "#EEF2F0", color: "#2F6F63" },
   cardMetaItem: { display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, color: "#8A8A82" },
   cardNotes: { display: "flex", gap: 6, marginTop: 7, fontSize: 12.5, color: "#7A796F", lineHeight: 1.4 },
   cardActions: { display: "flex", flexDirection: "column", gap: 6 },
