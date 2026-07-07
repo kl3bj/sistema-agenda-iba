@@ -71,7 +71,8 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
+
+    async function loadAll(showLoading) {
       const [apptRes, docRes, pwdRes] = await Promise.allSettled([
         window.storage.get(STORAGE_KEY, true),
         window.storage.get(DOCTORS_KEY, true),
@@ -81,9 +82,14 @@ export default function App() {
       setAppointments(apptRes.status === "fulfilled" && apptRes.value ? JSON.parse(apptRes.value.value) : []);
       setDoctors(docRes.status === "fulfilled" && docRes.value ? JSON.parse(docRes.value.value) : []);
       setPasswordStored(pwdRes.status === "fulfilled" && pwdRes.value ? pwdRes.value.value : null);
-      setLoadingInitial(false);
-    })();
-    return () => { mounted = false; };
+      if (showLoading) setLoadingInitial(false);
+    }
+
+    loadAll(true);
+    // Verifica atualizações a cada 5 segundos, assim a secretária e o médico
+    // veem as mudanças um do outro sem precisar recarregar a página.
+    const interval = setInterval(() => loadAll(false), 5000);
+    return () => { mounted = false; clearInterval(interval); };
   }, []);
 
   async function persist(next) {
