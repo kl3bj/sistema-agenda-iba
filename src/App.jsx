@@ -721,15 +721,7 @@ function Header({
 
   return (
     <div style={styles.header}>
-      <div>
-        <div style={styles.headerEyebrow}>
-          {role === "secretaria" ? `Modo secretária${secretaryName ? ` · ${secretaryName}` : ""}` : "Agenda do médico"}
-        </div>
-        <h1 style={styles.headerTitle}>
-          {role === "chefe" ? `Agenda do Doutor(a) ${selectedDoctorView}` : "Agenda da clínica"}
-        </h1>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, position: "relative" }}>
+      <div style={styles.headerActions}>
         {saving && <span style={styles.savingTag}>salvando...</span>}
 
         <button
@@ -822,6 +814,15 @@ function Header({
           </button>
         )}
         <button className="btn tap" style={styles.switchBtn} onClick={onSwitchRole}>Sair</button>
+      </div>
+
+      <div style={styles.headerTitleBlock}>
+        <div style={styles.headerEyebrow}>
+          {role === "secretaria" ? `Painel da secretária${secretaryName ? ` · ${secretaryName}` : ""}` : "Agenda do médico"}
+        </div>
+        <h1 style={styles.headerTitle}>
+          {role === "chefe" ? `Agenda do Doutor(a) ${selectedDoctorView}` : "Agenda da Clínica Cemo"}
+        </h1>
       </div>
     </div>
   );
@@ -1977,7 +1978,9 @@ const FONT_BODY = "'Inter', system-ui, sans-serif";
 const styles = {
   page: { minHeight: "100vh", background: "#FAF9F5", fontFamily: FONT_BODY, color: "#2B2A26" },
   shell: { maxWidth: 640, margin: "0 auto", padding: "18px 14px 100px" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
+  header: { display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 18 },
+  headerActions: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexWrap: "wrap", position: "relative" },
+  headerTitleBlock: { textAlign: "center" },
   headerEyebrow: { fontSize: 11, fontWeight: 600, letterSpacing: 0.6, textTransform: "uppercase", color: "#7A9B8E" },
   headerTitle: { fontFamily: FONT_DISPLAY, fontSize: 26, fontWeight: 700, margin: "2px 0 0", color: "#233B34" },
   savingTag: { fontSize: 11, color: "#8A8A82" },
