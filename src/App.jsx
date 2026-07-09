@@ -516,16 +516,30 @@ export default function App() {
               <button className="btn tap" style={styles.iconBtn} onClick={() => shiftDate(-1)} aria-label="Dia anterior">
                 <ChevronLeft size={18} color="#2F6F63" />
               </button>
-              <button
-                className="btn tap"
-                style={{ ...styles.dateChip, ...(showAllDates ? styles.dateChipInactive : {}) }}
-                onClick={() => { setSelectedDate(todayISO()); setShowAllDates(false); }}
-              >
-                <Calendar size={15} color="#2F6F63" />
-                <span style={{ textTransform: "capitalize" }}>
-                  {showAllDates ? "escolher dia" : `${formatDatePt(selectedDate)} · ${weekdayPt(selectedDate)}`}
-                </span>
-              </button>
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="btn tap"
+                  style={{ ...styles.dateChip, ...(showAllDates ? styles.dateChipInactive : {}) }}
+                >
+                  <Calendar size={15} color="#2F6F63" />
+                  <span style={{ textTransform: "capitalize" }}>
+                    {showAllDates ? "escolher dia" : `${formatDatePt(selectedDate)} · ${weekdayPt(selectedDate)}`}
+                  </span>
+                </button>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setSelectedDate(e.target.value);
+                      setShowAllDates(false);
+                    }
+                  }}
+                  aria-label="Escolher data"
+                  style={{ position: "absolute", inset: 0, opacity: 0, border: "none", cursor: "pointer" }}
+                />
+              </div>
               <button className="btn tap" style={styles.iconBtn} onClick={() => shiftDate(1)} aria-label="Próximo dia">
                 <ChevronRight size={18} color="#2F6F63" />
               </button>
