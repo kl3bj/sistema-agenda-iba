@@ -743,75 +743,82 @@ function Header({
         </button>
 
         {role === "secretaria" && (
-          <button className="btn tap" style={styles.iconBtn} onClick={onOpenDoctors} aria-label="Gerenciar médicos">
-            <Users size={16} color="#5B5A52" />
+          <button className="btn tap" style={styles.financeBtn} onClick={onOpenDoctors} aria-label="Médicos da clínica">
+            <Users size={15} color="#5B5A52" />
+            <span>Médicos</span>
           </button>
         )}
 
         <div style={{ position: "relative" }}>
-          <button className="btn tap" style={styles.iconBtn} onClick={() => setNotifOpen((v) => !v)} aria-label="Notificações">
-            <Bell size={16} color="#5B5A52" />
+          <button className="btn tap" style={styles.financeBtn} onClick={() => setNotifOpen(true)} aria-label="Notificações">
+            <Bell size={15} color="#5B5A52" />
+            <span>Notificações</span>
             {notifItems.length > 0 && <span style={styles.bellDot}>{notifItems.length}</span>}
           </button>
           {notifOpen && (
-            <div style={styles.notifDropdown}>
-              <div style={styles.notifDropdownHeader}>
-                <span>Notificações</span>
-                <button className="btn tap" onClick={() => setNotifOpen(false)} aria-label="Fechar">
-                  <X size={15} color="#8A8A82" />
-                </button>
+            <div style={styles.modalOverlay} onClick={() => setNotifOpen(false)}>
+              <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+                <div style={styles.modalHeader}>
+                  <h2 style={styles.modalTitle}>Notificações</h2>
+                  <button className="btn tap" style={styles.iconBtn} onClick={() => setNotifOpen(false)} aria-label="Fechar">
+                    <X size={18} color="#5B5A52" />
+                  </button>
+                </div>
+                <div style={{ padding: "6px 18px 22px" }}>
+                  {notifItems.length === 0 ? (
+                    <div style={styles.emptyNotif}>Nenhuma notificação por aqui.</div>
+                  ) : (
+                    notifItems.map(({ kind, appt }) => (
+                      <div key={appt.id} style={styles.notifItem}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#233B34" }}>{appt.clientName}</div>
+                        <div style={{ fontSize: 11.5, color: "#8A8A82", marginBottom: 4 }}>
+                          {formatDatePt(appt.date)} às {appt.time}
+                        </div>
+                        {kind === "pending" ? (
+                          <>
+                            <div style={{ fontSize: 12, color: "#8A5A15" }}>
+                              Pediu {appt.requestPending.type === "cancelamento" ? "cancelamento" : "remarcação"}: "{appt.requestPending.reason}"
+                            </div>
+                            <button
+                              className="btn tap"
+                              style={styles.notifActionBtn}
+                              onClick={() => {
+                                onOpenResolveFromBell(appt.id);
+                                setNotifOpen(false);
+                              }}
+                            >
+                              Analisar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ fontSize: 12, color: "#2F6F63" }}>
+                              {appt.doctorNotice.type === "cancelada"
+                                ? "Seu pedido de cancelamento foi confirmado."
+                                : `Remarcada para ${formatDatePt(appt.doctorNotice.newDate)} às ${appt.doctorNotice.newTime}.`}
+                            </div>
+                            <button
+                              className="btn tap"
+                              style={styles.notifActionBtn}
+                              onClick={() => onDismissNoticeFromBell(appt.id)}
+                            >
+                              OK, entendi
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-              {notifItems.length === 0 ? (
-                <div style={styles.emptyNotif}>Nenhuma notificação por aqui.</div>
-              ) : (
-                notifItems.map(({ kind, appt }) => (
-                  <div key={appt.id} style={styles.notifItem}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "#233B34" }}>{appt.clientName}</div>
-                    <div style={{ fontSize: 11.5, color: "#8A8A82", marginBottom: 4 }}>
-                      {formatDatePt(appt.date)} às {appt.time}
-                    </div>
-                    {kind === "pending" ? (
-                      <>
-                        <div style={{ fontSize: 12, color: "#8A5A15" }}>
-                          Pediu {appt.requestPending.type === "cancelamento" ? "cancelamento" : "remarcação"}: "{appt.requestPending.reason}"
-                        </div>
-                        <button
-                          className="btn tap"
-                          style={styles.notifActionBtn}
-                          onClick={() => {
-                            onOpenResolveFromBell(appt.id);
-                            setNotifOpen(false);
-                          }}
-                        >
-                          Analisar
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <div style={{ fontSize: 12, color: "#2F6F63" }}>
-                          {appt.doctorNotice.type === "cancelada"
-                            ? "Seu pedido de cancelamento foi confirmado."
-                            : `Remarcada para ${formatDatePt(appt.doctorNotice.newDate)} às ${appt.doctorNotice.newTime}.`}
-                        </div>
-                        <button
-                          className="btn tap"
-                          style={styles.notifActionBtn}
-                          onClick={() => onDismissNoticeFromBell(appt.id)}
-                        >
-                          OK, entendi
-                        </button>
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
             </div>
           )}
         </div>
 
         {role === "secretaria" && (
-          <button className="btn tap" style={styles.iconBtn} onClick={onOpenPassword} aria-label="Trocar senha">
-            <Lock size={16} color="#5B5A52" />
+          <button className="btn tap" style={styles.financeBtn} onClick={onOpenPassword} aria-label="Trocar senha">
+            <Lock size={15} color="#5B5A52" />
+            <span>Senha</span>
           </button>
         )}
         <button className="btn tap" style={styles.switchBtn} onClick={onSwitchRole}>Sair</button>
@@ -2026,8 +2033,8 @@ const styles = {
   roleSubtitle: { fontSize: 13.5, color: "#8A8A82", margin: "0 0 22px" },
   roleBtnPrimary: { width: "100%", background: "#2F6F63", color: "#fff", border: "none", borderRadius: 11, padding: "13px 16px", fontSize: 14.5, fontWeight: 700, marginBottom: 10 },
   roleBtnSecondary: { width: "100%", background: "#fff", color: "#233B34", border: "1px solid #E3E1D9", borderRadius: 11, padding: "13px 16px", fontSize: 14.5, fontWeight: 600 },
-  modalOverlay: { position: "fixed", inset: 0, background: "rgba(35,40,36,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 },
-  modal: { background: "#fff", width: "100%", maxWidth: 480, borderRadius: "18px 18px 0 0", maxHeight: "90vh", overflowY: "auto" },
+  modalOverlay: { position: "fixed", inset: 0, background: "rgba(35,40,36,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 },
+  modal: { background: "#fff", width: "100%", maxWidth: 480, borderRadius: 18, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(35,59,52,0.28)" },
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 18px 6px" },
   modalTitle: { fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 700, color: "#233B34", margin: 0 },
   form: { display: "flex", flexDirection: "column", gap: 13, padding: "10px 18px 24px" },
