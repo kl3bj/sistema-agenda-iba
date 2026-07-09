@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Plus, X, Calendar, Search, Check, Clock, CircleDollarSign, StickyNote, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Stethoscope, ClipboardList, Lock, Users, ShieldCheck, Bell, AlertTriangle, RefreshCw, Ban, PieChart, Download, FileText, ArrowLeft } from "lucide-react";
 import jsPDF from "jspdf";
 import { supabase } from "./supabaseClient.js";
@@ -123,6 +123,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState(todayISO());
+  const dateInputRef = useRef(null);
   const [showAllDates, setShowAllDates] = useState(false);
   const [doctorFilter, setDoctorFilter] = useState("todos");
   const [formOpen, setFormOpen] = useState(false);
@@ -521,6 +522,15 @@ export default function App() {
                   type="button"
                   className="btn tap"
                   style={{ ...styles.dateChip, ...(showAllDates ? styles.dateChipInactive : {}) }}
+                  onClick={() => {
+                    const el = dateInputRef.current;
+                    if (!el) return;
+                    if (typeof el.showPicker === "function") {
+                      try { el.showPicker(); return; } catch (err) { /* segue pro fallback abaixo */ }
+                    }
+                    el.focus();
+                    el.click();
+                  }}
                 >
                   <Calendar size={15} color="#2F6F63" />
                   <span style={{ textTransform: "capitalize" }}>
@@ -528,6 +538,7 @@ export default function App() {
                   </span>
                 </button>
                 <input
+                  ref={dateInputRef}
                   type="date"
                   value={selectedDate}
                   onChange={(e) => {
@@ -537,7 +548,8 @@ export default function App() {
                     }
                   }}
                   aria-label="Escolher data"
-                  style={{ position: "absolute", inset: 0, opacity: 0, border: "none", cursor: "pointer" }}
+                  style={{ position: "absolute", inset: 0, opacity: 0, pointerEvents: "none" }}
+                  tabIndex={-1}
                 />
               </div>
               <button className="btn tap" style={styles.iconBtn} onClick={() => shiftDate(1)} aria-label="Próximo dia">
