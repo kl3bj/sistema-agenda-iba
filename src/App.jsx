@@ -1462,17 +1462,26 @@ function lastNMonths(yyyyMm, n) {
   return out;
 }
 
-const CHART_PALETTE = ["#2F6F63", "#7A9B8E", "#D9932E", "#5B7FB5", "#C24A38", "#8A5A15", "#B0AD9F"];
+const CHART_PALETTE = ["#16A34A", "#0EA5E9", "#F59E0B", "#8B5CF6", "#EF4444", "#EC4899", "#64748B"];
+const STATUS_CHART_COLORS = { pago: "#22C55E", parcial: "#F59E0B", pendente: "#EF4444" };
 
 // Gráfico de rosca simples, feito em SVG puro — sem precisar instalar
 // nenhuma biblioteca de gráficos, pra manter o app leve e gratuito.
 function DonutChart({ data, size = 140, strokeWidth = 24 }) {
+  const [activeIdx, setActiveIdx] = useState(null);
   const total = data.reduce((s, d) => s + d.value, 0);
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   let acc = 0;
+  const active = activeIdx !== null ? data[activeIdx] : null;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      style={{ flexShrink: 0 }}
+      onMouseLeave={() => setActiveIdx(null)}
+    >
       <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
         {total <= 0 ? (
           <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#ECEAE1" strokeWidth={strokeWidth} />
@@ -1491,6 +1500,10 @@ function DonutChart({ data, size = 140, strokeWidth = 24 }) {
                 strokeWidth={strokeWidth}
                 strokeDasharray={`${dash} ${circumference - dash}`}
                 strokeDashoffset={-acc}
+                opacity={activeIdx === null || activeIdx === i ? 1 : 0.3}
+                style={{ cursor: "pointer", transition: "opacity .15s ease" }}
+                onMouseEnter={() => setActiveIdx(i)}
+                onClick={() => setActiveIdx((cur) => (cur === i ? null : i))}
               />
             );
             acc += dash;
@@ -1499,10 +1512,10 @@ function DonutChart({ data, size = 140, strokeWidth = 24 }) {
         )}
       </g>
       <text x="50%" y="47%" textAnchor="middle" fontSize="11" fontWeight="700" fill="#233B34">
-        R$ {formatBRLShort(total)}
+        R$ {formatBRLShort(active ? active.value : total)}
       </text>
       <text x="50%" y="61%" textAnchor="middle" fontSize="9" fill="#8A8A82">
-        total
+        {active ? active.label : "total"}
       </text>
     </svg>
   );
@@ -1727,7 +1740,7 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
       byStatus.map(([k, v]) => ({
         label: STATUS_STYLES[k]?.label || k,
         value: v.agendado,
-        color: STATUS_STYLES[k]?.dot || "#B0AD9F",
+        color: STATUS_CHART_COLORS[k] || "#94A3B8",
       })),
     [byStatus]
   );
