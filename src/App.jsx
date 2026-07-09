@@ -11,6 +11,64 @@ const FORMAS_PAGAMENTO = ["Dinheiro", "Pix", "Cartão de débito", "Cartão de c
 
 const TIPOS_CONSULTA = ["Consulta", "Retorno", "Avaliação", "Exame", "Procedimento", "Encaixe/Urgência"];
 
+const INSTALLMENT_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
+
+function installmentLabel(n) {
+  return n <= 1 ? "à vista (1x)" : `${n}x`;
+}
+
+// Converte um valor decimal ("5000" ou "5000.00") no total de centavos,
+// usado para alimentar o campo de dinheiro mascarado.
+function moneyToDigits(value) {
+  if (value === "" || value === null || value === undefined) return "";
+  const cents = Math.round(parseFloat(value) * 100);
+  if (!isFinite(cents) || isNaN(cents)) return "";
+  return String(cents);
+}
+
+// Converte os dígitos digitados de volta pro formato "5000.00", que é o
+// formato que o resto do sistema (somas, relatórios) já sabe interpretar.
+function digitsToMoneyValue(digits) {
+  if (!digits) return "";
+  const n = parseInt(digits, 10);
+  return (n / 100).toFixed(2);
+}
+
+// Formata os dígitos digitados como "5.000,00" pra exibir no campo,
+// no padrão brasileiro — sem qualquer chance de confusão com ponto/vírgula.
+function digitsToDisplay(digits) {
+  if (!digits) return "";
+  const n = parseInt(digits, 10);
+  const cents = (n % 100).toString().padStart(2, "0");
+  const reais = Math.floor(n / 100).toLocaleString("pt-BR");
+  return `${reais},${cents}`;
+}
+
+// Campo de dinheiro no estilo "caixa eletrônico": a pessoa digita os números
+// em sequência (ex: 5-0-0-0-0-0 pra R$ 5.000,00) e o sistema mesmo posiciona
+// o ponto de milhar e a vírgula dos centavos, sem risco de digitar errado.
+function MoneyInput({ value, onChange, required, placeholder }) {
+  const digits = moneyToDigits(value);
+  function handleChange(e) {
+    const onlyDigits = e.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+    onChange(digitsToMoneyValue(onlyDigits));
+  }
+  return (
+    <div style={{ position: "relative" }}>
+      <span style={styles.moneyPrefix}>R$</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        style={{ ...styles.input, paddingLeft: 34 }}
+        value={digitsToDisplay(digits)}
+        onChange={handleChange}
+        placeholder={placeholder || "0,00"}
+        required={required}
+      />
+    </div>
+  );
+}
+
 const STATUS_STYLES = {
   pago: { label: "Pago", bg: "#E7F2EC", text: "#2F6F51", dot: "#3F8F65" },
   parcial: { label: "Falta parte", bg: "#FBF0DE", text: "#8A5A15", dot: "#D9932E" },
@@ -43,10 +101,15 @@ function emptyForm() {
     appointmentType: TIPOS_CONSULTA[0],
     appointmentTypeDetail: "",
     paymentMethod: FORMAS_PAGAMENTO[0],
+    installments: 1,
     paymentStatus: "pendente",
     valorTotal: "",
     valorPago: "",
     convenioName: "",
+    splitPayment: false,
+    paymentMethod2: FORMAS_PAGAMENTO[0],
+    installments2: 1,
+    valorPago2: "",
     notes: "",
   };
 }
@@ -180,10 +243,15 @@ export default function App() {
       appointmentType: appt.appointmentType || TIPOS_CONSULTA[0],
       appointmentTypeDetail: appt.appointmentTypeDetail || "",
       paymentMethod: appt.paymentMethod,
+      installments: appt.installments || 1,
       paymentStatus: appt.paymentStatus,
       valorTotal: appt.valorTotal ?? "",
       valorPago: appt.valorPago ?? "",
       convenioName: appt.convenioName ?? "",
+      splitPayment: !!appt.paymentMethod2,
+      paymentMethod2: appt.paymentMethod2 || FORMAS_PAGAMENTO[0],
+      installments2: appt.installments2 || 1,
+      valorPago2: appt.valorPago2 ?? "",
       notes: appt.notes ?? "",
     });
     setFormOpen(true);
@@ -201,11 +269,35 @@ export default function App() {
         a.time === form.time
     );
     if (hasConflict) return;
-    const valorPagoFinal =
-      form.paymentStatus === "pago" ? form.valorTotal : form.paymentStatus === "pendente" ? "0" : form.valorPago;
+
+    const num = (v) => parseFloat(v) || 0;
+    // Parte 1 (forma principal) e parte 2 (só existe quando o pagamento foi dividido).
+    let valorParte1 = form.valorPago;
+    let valorParte2 = form.valorPago2;
+    if (form.paymentStatus === "pendente") {
+      valorParte1 = "0";
+      valorParte2 = "";
+    } else if (form.paymentStatus === "pago") {
+      // "Pago": se dividido, a parte 2 é sempre o restante do valor total,
+      // calculado automaticamente (evita a secretária ter que fazer conta).
+      valorParte1 = form.splitPayment ? form.valorPago : form.valorTotal;
+      valorParte2 = form.splitPayment ? (num(form.valorTotal) - num(form.valorPago)).toFixed(2) : "";
+    } else {
+      // "Falta parte": os dois valores são digitados na mão.
+      valorParte1 = form.valorPago;
+      valorParte2 = form.splitPayment ? form.valorPago2 : "";
+    }
+    const valorPagoFinal = (num(valorParte1) + num(valorParte2)).toFixed(2);
+
     const record = {
       ...form,
       valorPago: valorPagoFinal,
+      valorPago1: valorParte1,
+      paymentMethod2: form.splitPayment ? form.paymentMethod2 : null,
+      valorPago2: form.splitPayment ? valorParte2 : null,
+      installments: form.paymentMethod === "Cartão de crédito" ? Number(form.installments) || 1 : null,
+      installments2:
+        form.splitPayment && form.paymentMethod2 === "Cartão de crédito" ? Number(form.installments2) || 1 : null,
       id: form.id || (Date.now().toString(36) + Math.random().toString(36).slice(2)),
       createdBy: form.id ? (appointments.find((a) => a.id === form.id)?.createdBy || secretaryName) : secretaryName,
       lastEditedBy: secretaryName,
@@ -796,14 +888,29 @@ function AppointmentCard({ appt, role, editable, onEdit, onDelete, onRequestActi
             </span>
           )}
           <span style={styles.cardMetaItem}>
-            <CircleDollarSign size={13} color="#8A8A82" /> {appt.paymentMethod}
+            <CircleDollarSign size={13} color="#8A8A82" />
+            {appt.paymentMethod}
+            {appt.installments > 1 ? ` (${appt.installments}x)` : ""}
+            {appt.paymentMethod2 ? ` + ${appt.paymentMethod2}${appt.installments2 > 1 ? ` (${appt.installments2}x)` : ""}` : ""}
           </span>
         </div>
 
         {expanded && (
           <div style={styles.expandPanel}>
-            <div style={styles.expandRow}><span>Valor total</span><strong>{appt.valorTotal ? `R$ ${appt.valorTotal}` : "—"}</strong></div>
-            <div style={styles.expandRow}><span>Valor já pago</span><strong>{appt.valorPago ? `R$ ${appt.valorPago}` : "—"}</strong></div>
+            <div style={styles.expandRow}><span>Valor total</span><strong>{appt.valorTotal ? `R$ ${formatBRL(parseFloat(appt.valorTotal))}` : "—"}</strong></div>
+            <div style={styles.expandRow}><span>Valor já pago</span><strong>{appt.valorPago ? `R$ ${formatBRL(parseFloat(appt.valorPago))}` : "—"}</strong></div>
+            {appt.paymentMethod2 && (
+              <>
+                <div style={styles.expandRow}>
+                  <span>Via {appt.paymentMethod}{appt.installments > 1 ? ` (${appt.installments}x)` : ""}</span>
+                  <strong>R$ {formatBRL(parseFloat(appt.valorPago1 ?? appt.valorPago))}</strong>
+                </div>
+                <div style={styles.expandRow}>
+                  <span>Via {appt.paymentMethod2}{appt.installments2 > 1 ? ` (${appt.installments2}x)` : ""}</span>
+                  <strong>R$ {formatBRL(parseFloat(appt.valorPago2))}</strong>
+                </div>
+              </>
+            )}
             {appt.paymentMethod === "Convênio" && (
               <div style={styles.expandRow}><span>Convênio</span><strong>{appt.convenioName || "—"}</strong></div>
             )}
@@ -1113,26 +1220,6 @@ function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, is
             )}
 
             <label style={styles.label}>
-              Forma de pagamento
-              <select style={styles.input} value={form.paymentMethod} onChange={(e) => upd("paymentMethod", e.target.value)}>
-                {FORMAS_PAGAMENTO.map((f) => <option key={f} value={f}>{f}</option>)}
-              </select>
-            </label>
-
-            {form.paymentMethod === "Convênio" && (
-              <label style={styles.label}>
-                Qual convênio?
-                <input
-                  style={styles.input}
-                  value={form.convenioName}
-                  onChange={(e) => upd("convenioName", e.target.value)}
-                  placeholder="Ex: Unimed, Bradesco Saúde..."
-                  required
-                />
-              </label>
-            )}
-
-            <label style={styles.label}>
               Situação do pagamento
               <div style={styles.statusOptions}>
                 {Object.entries(STATUS_STYLES).map(([key, s]) => (
@@ -1155,32 +1242,98 @@ function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, is
               </div>
             </label>
 
-            <div style={styles.row2}>
+            <label style={styles.label}>
+              Valor da consulta
+              <MoneyInput value={form.valorTotal} onChange={(v) => upd("valorTotal", v)} required />
+            </label>
+
+            <label style={styles.label}>
+              Forma de pagamento{form.paymentStatus !== "pendente" && form.splitPayment ? " (1ª forma)" : ""}
+              <select style={styles.input} value={form.paymentMethod} onChange={(e) => upd("paymentMethod", e.target.value)}>
+                {FORMAS_PAGAMENTO.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </label>
+
+            {form.paymentMethod === "Cartão de crédito" && (
               <label style={styles.label}>
-                Valor da consulta (R$)
+                Em quantas vezes?
+                <select style={styles.input} value={form.installments} onChange={(e) => upd("installments", Number(e.target.value))}>
+                  {INSTALLMENT_OPTIONS.map((n) => <option key={n} value={n}>{installmentLabel(n)}</option>)}
+                </select>
+              </label>
+            )}
+
+            {(form.paymentMethod === "Convênio" || (form.splitPayment && form.paymentMethod2 === "Convênio")) && (
+              <label style={styles.label}>
+                Qual convênio?
                 <input
-                  type="number" min="0" step="0.01"
                   style={styles.input}
-                  value={form.valorTotal}
-                  onChange={(e) => upd("valorTotal", e.target.value)}
-                  placeholder="0,00"
+                  value={form.convenioName}
+                  onChange={(e) => upd("convenioName", e.target.value)}
+                  placeholder="Ex: Unimed, Bradesco Saúde..."
                   required
                 />
               </label>
-              {form.paymentStatus === "parcial" && (
+            )}
+
+            {form.paymentStatus !== "pendente" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 600, color: "#5B5A52" }}>
+                <input
+                  type="checkbox"
+                  checked={form.splitPayment}
+                  onChange={(e) => upd("splitPayment", e.target.checked)}
+                />
+                Pagamento dividido em 2 formas (ex: metade Pix, metade dinheiro)
+              </label>
+            )}
+
+            {form.paymentStatus === "pago" && form.splitPayment && (
+              <div style={styles.row2}>
                 <label style={styles.label}>
-                  Valor já pago (R$)
-                  <input
-                    type="number" min="0" step="0.01"
-                    style={styles.input}
-                    value={form.valorPago}
-                    onChange={(e) => upd("valorPago", e.target.value)}
-                    placeholder="0,00"
-                    required
-                  />
+                  Valor recebido (1ª forma)
+                  <MoneyInput value={form.valorPago} onChange={(v) => upd("valorPago", v)} required />
                 </label>
-              )}
-            </div>
+                <label style={styles.label}>
+                  Valor na 2ª forma (automático)
+                  <div style={{ ...styles.input, background: "#F7F6F1", color: "#5B5A52" }}>
+                    R$ {formatBRL(Math.max((parseFloat(form.valorTotal) || 0) - (parseFloat(form.valorPago) || 0), 0))}
+                  </div>
+                </label>
+              </div>
+            )}
+
+            {form.paymentStatus === "parcial" && (
+              <div style={styles.row2}>
+                <label style={styles.label}>
+                  Valor já pago{form.splitPayment ? " (1ª forma)" : ""}
+                  <MoneyInput value={form.valorPago} onChange={(v) => upd("valorPago", v)} required />
+                </label>
+                {form.splitPayment && (
+                  <label style={styles.label}>
+                    Valor já pago (2ª forma)
+                    <MoneyInput value={form.valorPago2} onChange={(v) => upd("valorPago2", v)} required />
+                  </label>
+                )}
+              </div>
+            )}
+
+            {form.paymentStatus !== "pendente" && form.splitPayment && (
+              <label style={styles.label}>
+                Forma de pagamento (2ª forma)
+                <select style={styles.input} value={form.paymentMethod2} onChange={(e) => upd("paymentMethod2", e.target.value)}>
+                  {FORMAS_PAGAMENTO.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </label>
+            )}
+
+            {form.paymentStatus !== "pendente" && form.splitPayment && form.paymentMethod2 === "Cartão de crédito" && (
+              <label style={styles.label}>
+                Em quantas vezes (2ª forma)?
+                <select style={styles.input} value={form.installments2} onChange={(e) => upd("installments2", Number(e.target.value))}>
+                  {INSTALLMENT_OPTIONS.map((n) => <option key={n} value={n}>{installmentLabel(n)}</option>)}
+                </select>
+              </label>
+            )}
 
             <label style={styles.label}>
               Anotações
@@ -1283,7 +1436,12 @@ function sumField(list, field) {
 }
 
 function exportCSV(rows, filename) {
-  const header = ["Data", "Horário", "Cliente", "Tipo", "Detalhe", "Médico", "Forma de pagamento", "Convênio", "Status", "Valor total", "Valor pago", "Anotações"];
+  const header = [
+    "Data", "Horário", "Cliente", "Tipo", "Detalhe", "Médico",
+    "Forma de pagamento (1)", "Parcelas (1)", "Valor recebido (1)",
+    "Forma de pagamento (2)", "Parcelas (2)", "Valor recebido (2)",
+    "Convênio", "Status", "Valor total", "Valor pago", "Anotações",
+  ];
   const csvRows = [
     header,
     ...rows.map((a) => [
@@ -1294,6 +1452,11 @@ function exportCSV(rows, filename) {
       a.appointmentTypeDetail || "",
       a.doctorName,
       a.paymentMethod,
+      a.installments > 1 ? `${a.installments}x` : "",
+      (a.paymentMethod2 ? (a.valorPago1 ?? a.valorPago) : a.valorPago || "0").toString().replace(".", ","),
+      a.paymentMethod2 || "",
+      a.installments2 > 1 ? `${a.installments2}x` : "",
+      a.paymentMethod2 ? (a.valorPago2 || "0").toString().replace(".", ",") : "",
       a.convenioName || "",
       STATUS_STYLES[a.paymentStatus]?.label || a.paymentStatus,
       (a.valorTotal || "0").toString().replace(".", ","),
@@ -1375,13 +1538,23 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
   const totalRecebidoHoje = sumField(todayAppts, "valorPago");
 
   const byMethod = useMemo(() => {
+    // Quando uma consulta teve pagamento dividido em 2 formas, cada parte
+    // entra separadamente na forma de pagamento certa.
     const map = new Map();
-    for (const a of monthAppts) {
-      const key = a.paymentMethod;
+    function add(key, count, valor) {
+      if (!key) return;
       if (!map.has(key)) map.set(key, { count: 0, recebido: 0 });
       const cur = map.get(key);
-      cur.count += 1;
-      cur.recebido += parseFloat(a.valorPago) || 0;
+      cur.count += count;
+      cur.recebido += valor;
+    }
+    for (const a of monthAppts) {
+      if (a.paymentMethod2) {
+        add(a.paymentMethod, 1, parseFloat(a.valorPago1 ?? a.valorPago) || 0);
+        add(a.paymentMethod2, 1, parseFloat(a.valorPago2) || 0);
+      } else {
+        add(a.paymentMethod, 1, parseFloat(a.valorPago) || 0);
+      }
     }
     return Array.from(map.entries());
   }, [monthAppts]);
@@ -1861,6 +2034,7 @@ const styles = {
   form: { display: "flex", flexDirection: "column", gap: 13, padding: "10px 18px 24px" },
   label: { display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5, fontWeight: 600, color: "#5B5A52" },
   input: { border: "1px solid #E3E1D9", borderRadius: 9, padding: "11px 12px", fontSize: 14.5, color: "#2B2A26", background: "#FDFCFA" },
+  moneyPrefix: { position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#8A8A82", fontSize: 14.5, pointerEvents: "none" },
   inputConflict: { borderColor: "#C24A38", background: "#FDF4F2" },
   row2: { display: "flex", gap: 10 },
   statusOptions: { display: "flex", gap: 8, flexWrap: "wrap" },
