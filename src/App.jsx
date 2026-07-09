@@ -1441,6 +1441,118 @@ function sumField(list, field) {
   return list.reduce((s, a) => s + (parseFloat(a[field]) || 0), 0);
 }
 
+function formatBRLShort(n) {
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(".", ",")}k`;
+  return formatBRL(n);
+}
+
+function formatMonthShortPt(yyyyMm) {
+  const meses = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const [y, m] = yyyyMm.split("-");
+  return `${meses[parseInt(m, 10) - 1]}/${y.slice(2)}`;
+}
+
+function lastNMonths(yyyyMm, n) {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+const CHART_PALETTE = ["#2F6F63", "#7A9B8E", "#D9932E", "#5B7FB5", "#C24A38", "#8A5A15", "#B0AD9F"];
+
+// Gráfico de rosca simples, feito em SVG puro — sem precisar instalar
+// nenhuma biblioteca de gráficos, pra manter o app leve e gratuito.
+function DonutChart({ data, size = 140, strokeWidth = 24 }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let acc = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+        {total <= 0 ? (
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#ECEAE1" strokeWidth={strokeWidth} />
+        ) : (
+          data.map((d, i) => {
+            const frac = d.value / total;
+            const dash = Math.max(frac * circumference, 0);
+            const el = (
+              <circle
+                key={i}
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke={d.color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={`${dash} ${circumference - dash}`}
+                strokeDashoffset={-acc}
+              />
+            );
+            acc += dash;
+            return el;
+          })
+        )}
+      </g>
+      <text x="50%" y="47%" textAnchor="middle" fontSize="11" fontWeight="700" fill="#233B34">
+        R$ {formatBRLShort(total)}
+      </text>
+      <text x="50%" y="61%" textAnchor="middle" fontSize="9" fill="#8A8A82">
+        total
+      </text>
+    </svg>
+  );
+}
+
+function ChartLegend({ data }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7, flex: 1, minWidth: 0 }}>
+      {data.map((d, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
+          <span style={{ width: 9, height: 9, borderRadius: 99, background: d.color, flexShrink: 0 }} />
+          <span style={{ color: "#5B5A52", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {d.label}
+          </span>
+          <strong style={{ color: "#233B34" }}>
+            {total > 0 ? `${Math.round((d.value / total) * 100)}%` : "0%"}
+          </strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Gráfico de barras simples pra mostrar a evolução do recebido mês a mês.
+function TrendBarChart({ data, height = 130 }) {
+  const max = Math.max(...data.map((d) => d.recebido), 1);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height, padding: "0 2px" }}>
+      {data.map((d) => (
+        <div key={d.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0 }}>
+          <div style={{ fontSize: 10, color: "#5B5A52", fontWeight: 700 }}>
+            {d.recebido > 0 ? formatBRLShort(d.recebido) : ""}
+          </div>
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 30,
+              height: Math.max((d.recebido / max) * (height - 42), 3),
+              background: "#2F6F63",
+              borderRadius: "6px 6px 0 0",
+            }}
+          />
+          <div style={{ fontSize: 10, color: "#8A8A82" }}>{formatMonthShortPt(d.month)}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function exportCSV(rows, filename) {
   const header = [
     "Data", "Horário", "Cliente", "Tipo", "Detalhe", "Médico",
@@ -1592,6 +1704,34 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
 
   const periodLabel = `${formatMonthPt(financeMonth)}${effectiveDoctor !== "todos" ? ` · ${effectiveDoctor}` : ""}`;
 
+  const monthlyTrend = useMemo(() => {
+    const months = lastNMonths(financeMonth, 6);
+    return months.map((mm) => ({
+      month: mm,
+      recebido: sumField(
+        appointments.filter(
+          (a) => !a.cancelled && a.date.startsWith(mm) && (effectiveDoctor === "todos" || a.doctorName === effectiveDoctor)
+        ),
+        "valorPago"
+      ),
+    }));
+  }, [appointments, financeMonth, effectiveDoctor]);
+
+  const methodChartData = useMemo(
+    () => byMethod.map(([k, v], i) => ({ label: k, value: v.recebido, color: CHART_PALETTE[i % CHART_PALETTE.length] })),
+    [byMethod]
+  );
+
+  const statusChartData = useMemo(
+    () =>
+      byStatus.map(([k, v]) => ({
+        label: STATUS_STYLES[k]?.label || k,
+        value: v.agendado,
+        color: STATUS_STYLES[k]?.dot || "#B0AD9F",
+      })),
+    [byStatus]
+  );
+
   function handleExportCSV() {
     exportCSV(monthAppts, `financeiro-${financeMonth}.csv`);
   }
@@ -1660,21 +1800,36 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
       </div>
 
       <div style={styles.financeSection}>
+        <h3 style={styles.financeSectionTitle}>Recebido nos últimos 6 meses</h3>
+        <TrendBarChart data={monthlyTrend} />
+      </div>
+
+      <div style={styles.financeSection}>
         <h3 style={styles.financeSectionTitle}>Por forma de pagamento</h3>
         {byMethod.length === 0 ? (
           <p style={styles.financeEmpty}>Nenhuma consulta neste período.</p>
         ) : (
-          byMethod.map(([k, v]) => (
-            <div key={k} style={styles.financeRow}>
-              <span>{k} <span style={{ color: "#8A8A82" }}>({v.count})</span></span>
-              <strong>R$ {formatBRL(v.recebido)}</strong>
+          <>
+            <div style={styles.chartRow}>
+              <DonutChart data={methodChartData} />
+              <ChartLegend data={methodChartData} />
             </div>
-          ))
+            {byMethod.map(([k, v]) => (
+              <div key={k} style={styles.financeRow}>
+                <span>{k} <span style={{ color: "#8A8A82" }}>({v.count})</span></span>
+                <strong>R$ {formatBRL(v.recebido)}</strong>
+              </div>
+            ))}
+          </>
         )}
       </div>
 
       <div style={styles.financeSection}>
         <h3 style={styles.financeSectionTitle}>Por situação de pagamento</h3>
+        <div style={styles.chartRow}>
+          <DonutChart data={statusChartData} />
+          <ChartLegend data={statusChartData} />
+        </div>
         {byStatus.map(([k, v]) => (
           <div key={k} style={styles.financeRow}>
             <span>{STATUS_STYLES[k]?.label || k} <span style={{ color: "#8A8A82" }}>({v.count})</span></span>
@@ -2064,6 +2219,7 @@ const styles = {
   financeSectionTitle: { fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 700, color: "#233B34", margin: "0 0 10px" },
   financeRow: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#3A3934", padding: "6px 0", borderBottom: "1px solid #F3F2ED" },
   financeEmpty: { fontSize: 13, color: "#8A8A82", margin: 0 },
+  chartRow: { display: "flex", alignItems: "center", gap: 16, marginBottom: 12, flexWrap: "wrap" },
   exportRow: { display: "flex", gap: 10, marginTop: 6, marginBottom: 100 },
   exportBtn: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "#fff", border: "1px solid #E3E1D9", borderRadius: 10, padding: "12px", fontSize: 13.5, fontWeight: 700, color: "#233B34" },
 };
