@@ -683,7 +683,7 @@ function RoleSelect({ onSelectSecretaria, onSelectChefe }) {
     <div style={styles.roleWrap}>
       <div style={styles.roleCard}>
         <Stethoscope size={30} color="#2F6F63" />
-        <h1 style={styles.roleTitle}>Agenda da clínica</h1>
+        <h1 style={styles.roleTitle}>Clínica Cemo</h1>
         <p style={styles.roleSubtitle}>Quem está entrando agora?</p>
         <button className="btn tap" style={styles.roleBtnPrimary} onClick={onSelectSecretaria}>
           Sou a secretária
