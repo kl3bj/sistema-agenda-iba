@@ -520,17 +520,9 @@ export default function App() {
               <div style={{ position: "relative" }}>
                 <button
                   type="button"
+                  tabIndex={-1}
                   className="btn tap"
-                  style={{ ...styles.dateChip, ...(showAllDates ? styles.dateChipInactive : {}) }}
-                  onClick={() => {
-                    const el = dateInputRef.current;
-                    if (!el) return;
-                    if (typeof el.showPicker === "function") {
-                      try { el.showPicker(); return; } catch (err) { /* segue pro fallback abaixo */ }
-                    }
-                    el.focus();
-                    el.click();
-                  }}
+                  style={{ ...styles.dateChip, ...(showAllDates ? styles.dateChipInactive : {}), pointerEvents: "none" }}
                 >
                   <Calendar size={15} color="#2F6F63" />
                   <span style={{ textTransform: "capitalize" }}>
@@ -548,8 +540,7 @@ export default function App() {
                     }
                   }}
                   aria-label="Escolher data"
-                  style={{ position: "absolute", inset: 0, opacity: 0, pointerEvents: "none" }}
-                  tabIndex={-1}
+                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
                 />
               </div>
               <button className="btn tap" style={styles.iconBtn} onClick={() => shiftDate(1)} aria-label="Próximo dia">
