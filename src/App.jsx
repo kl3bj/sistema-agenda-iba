@@ -461,6 +461,25 @@ export default function App() {
     return map;
   }, [appointments, weekDates, doctorFilter, role, selectedDoctorView, search]);
 
+  useEffect(() => {
+    if (!isDesktop) return;
+    const q = search.trim().toLowerCase();
+    if (!q) return;
+    let candidates = appointments.filter((a) => a.clientName.toLowerCase().includes(q));
+    if (role === "chefe") {
+      candidates = candidates.filter((a) => a.doctorName === selectedDoctorView && (!a.cancelled || a.doctorNotice));
+    } else if (doctorFilter !== "todos") {
+      candidates = candidates.filter((a) => a.doctorName === doctorFilter);
+    }
+    if (candidates.length === 0) return;
+    if (candidates.some((a) => weekDates.includes(a.date))) return;
+    candidates.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    const today = todayISO();
+    const next = candidates.find((a) => a.date >= today);
+    const target = next || candidates[candidates.length - 1];
+    setSelectedDate(target.date);
+  }, [search, isDesktop, appointments, doctorFilter, role, selectedDoctorView, weekDates]);
+
   function shiftWeek(n) {
     const d = new Date(selectedDate + "T12:00:00");
     d.setDate(d.getDate() + n * 7);
