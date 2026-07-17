@@ -1558,21 +1558,21 @@ function ChartLegend({ data }) {
 }
 
 // Gráfico de barras simples pra mostrar a evolução do recebido mês a mês.
-function TrendBarChart({ data, height = 130 }) {
-  const max = Math.max(...data.map((d) => d.recebido), 1);
+function TrendBarChart({ data, height = 130, valueKey = "recebido", formatValue = formatBRLShort, barColor = "#2F6F63" }) {
+  const max = Math.max(...data.map((d) => d[valueKey]), 1);
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height, padding: "0 2px" }}>
       {data.map((d) => (
         <div key={d.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0 }}>
           <div style={{ fontSize: 10, color: "#3A3934", fontWeight: 700 }}>
-            {d.recebido > 0 ? formatBRLShort(d.recebido) : ""}
+            {d[valueKey] > 0 ? formatValue(d[valueKey]) : ""}
           </div>
           <div
             style={{
               width: "100%",
               maxWidth: 30,
-              height: Math.max((d.recebido / max) * (height - 42), 3),
-              background: "#2F6F63",
+              height: Math.max((d[valueKey] / max) * (height - 42), 3),
+              background: barColor,
               borderRadius: "6px 6px 0 0",
             }}
           />
@@ -1684,6 +1684,17 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
   const totalRecebidoMes = sumField(monthAppts, "valorPago");
   const totalPendenteMes = Math.max(totalAgendadoMes - totalRecebidoMes, 0);
   const totalRecebidoHoje = sumField(todayAppts, "valorPago");
+  const totalConsultasMes = monthAppts.length;
+
+  const previousMonthKey = useMemo(() => lastNMonths(financeMonth, 2)[0], [financeMonth]);
+  const totalConsultasMesAnterior = useMemo(
+    () =>
+      appointments.filter(
+        (a) => !a.cancelled && a.date.startsWith(previousMonthKey) && (effectiveDoctor === "todos" || a.doctorName === effectiveDoctor)
+      ).length,
+    [appointments, previousMonthKey, effectiveDoctor]
+  );
+  const diffConsultas = totalConsultasMes - totalConsultasMesAnterior;
 
   const byMethod = useMemo(() => {
     // Quando uma consulta teve pagamento dividido em 2 formas, cada parte
@@ -1736,15 +1747,16 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
 
   const monthlyTrend = useMemo(() => {
     const months = lastNMonths(financeMonth, 6);
-    return months.map((mm) => ({
-      month: mm,
-      recebido: sumField(
-        appointments.filter(
-          (a) => !a.cancelled && a.date.startsWith(mm) && (effectiveDoctor === "todos" || a.doctorName === effectiveDoctor)
-        ),
-        "valorPago"
-      ),
-    }));
+    return months.map((mm) => {
+      const appsDoMes = appointments.filter(
+        (a) => !a.cancelled && a.date.startsWith(mm) && (effectiveDoctor === "todos" || a.doctorName === effectiveDoctor)
+      );
+      return {
+        month: mm,
+        recebido: sumField(appsDoMes, "valorPago"),
+        quantidade: appsDoMes.length,
+      };
+    });
   }, [appointments, financeMonth, effectiveDoctor]);
 
   const methodChartData = useMemo(
@@ -1827,11 +1839,25 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
           <div style={styles.statCardLabel}>Falta receber</div>
           <div style={{ ...styles.statCardValue, color: "#A03B2E" }}>R$ {formatBRL(totalPendenteMes)}</div>
         </div>
+        <div style={styles.statCard}>
+          <div style={styles.statCardLabel}>Consultas no mês</div>
+          <div style={styles.statCardValue}>{totalConsultasMes}</div>
+          {totalConsultasMesAnterior > 0 && (
+            <div style={{ fontSize: 11.5, fontWeight: 600, marginTop: 2, color: diffConsultas >= 0 ? "#2F6F63" : "#A03B2E" }}>
+              {diffConsultas === 0 ? "Igual ao mês anterior" : diffConsultas > 0 ? `▲ ${diffConsultas} a mais que o mês anterior` : `▼ ${Math.abs(diffConsultas)} a menos que o mês anterior`}
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={styles.financeSection}>
         <h3 style={styles.financeSectionTitle}>Recebido nos últimos 6 meses</h3>
-        <TrendBarChart data={monthlyTrend} />
+        <TrendBarChart data={monthlyTrend} valueKey="recebido" formatValue={formatBRLShort} barColor="#2F6F63" />
+      </div>
+
+      <div style={styles.financeSection}>
+        <h3 style={styles.financeSectionTitle}>Consultas nos últimos 6 meses</h3>
+        <TrendBarChart data={monthlyTrend} valueKey="quantidade" formatValue={(n) => String(n)} barColor="#7A9B8E" />
       </div>
 
       <div style={styles.financeSection}>
