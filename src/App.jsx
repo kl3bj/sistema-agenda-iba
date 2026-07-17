@@ -752,6 +752,7 @@ export default function App() {
           onSubmit={handleSubmit}
           isEditing={!!form.id}
           onOpenDoctorManager={() => { setFormOpen(false); setDoctorManagerOpen(true); }}
+          onDelete={form.id ? () => { setFormOpen(false); setConfirmDelete(form.id); } : null}
         />
       )}
 
@@ -1298,7 +1299,7 @@ function ResolveRequestModal({ appt, onClose, onConfirmCancel, onConfirmReschedu
   );
 }
 
-function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, isEditing, onOpenDoctorManager }) {
+function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, isEditing, onOpenDoctorManager, onDelete }) {
   function upd(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
   }
@@ -1530,6 +1531,11 @@ function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, is
             <button type="submit" className="btn tap" style={{ ...styles.submitBtn, ...(conflict ? styles.submitBtnDisabled : {}) }} disabled={!!conflict}>
               {isEditing ? "Salvar alterações" : "Marcar consulta"}
             </button>
+            {isEditing && onDelete && (
+              <button type="button" className="btn tap" style={styles.deleteLinkBtn} onClick={onDelete}>
+                <Trash2 size={14} color="#A03B2E" /> Excluir esta consulta
+              </button>
+            )}
           </form>
         )}
       </div>
@@ -2439,6 +2445,7 @@ const styles = {
   submitBtnDisabled: { background: "#B0AD9F", cursor: "not-allowed" },
   cancelBtn: { flex: 1, background: "#F7F6F1", border: "1px solid #ECEAE1", borderRadius: 9, padding: "11px", fontSize: 13.5, fontWeight: 600, color: "#3A3934" },
   deleteBtn: { flex: 1, background: "#C24A38", color: "#fff", border: "none", borderRadius: 9, padding: "11px", fontSize: 13.5, fontWeight: 700 },
+  deleteLinkBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "transparent", border: "none", padding: "10px", fontSize: 13, fontWeight: 600, color: "#A03B2E" },
   doctorRow: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#FAF9F5", border: "1px solid #ECEAE1", borderRadius: 9, padding: "9px 12px" },
   addDoctorBtn: { width: 44, background: "#2F6F63", border: "none", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center" },
   backLink: { display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", padding: "4px 0", fontSize: 13, color: "#3A3934", marginBottom: 14, fontWeight: 600 },
