@@ -447,7 +447,7 @@ export default function App() {
         />
       ) : loadingInitial || session === undefined ? (
         <div style={styles.roleWrap}>
-          <span style={{ color: "#8A8A82", fontSize: 14 }}>Carregando...</span>
+          <span style={{ color: "#5B5A52", fontSize: 14 }}>Carregando...</span>
         </div>
       ) : authView ? (
         <SecretariaAuthScreen
@@ -558,7 +558,7 @@ export default function App() {
 
           {role === "secretaria" && doctors.length > 0 && (
             <div style={styles.searchRow}>
-              <Stethoscope size={15} color="#8A8A82" />
+              <Stethoscope size={15} color="#5B5A52" />
               <select
                 style={{ ...styles.searchInput, cursor: "pointer" }}
                 value={doctorFilter}
@@ -571,7 +571,7 @@ export default function App() {
           )}
 
           <div style={styles.searchRow}>
-            <Search size={16} color="#8A8A82" />
+            <Search size={16} color="#5B5A52" />
             <input
               style={styles.searchInput}
               placeholder="Buscar cliente pelo nome..."
@@ -586,7 +586,7 @@ export default function App() {
                 <ClipboardList size={28} color="#B9B6A9" />
                 <p style={{ margin: "10px 0 4px", fontWeight: 600, color: "#54524A" }}>Nenhuma consulta aqui ainda</p>
                 {isSecretaria && (
-                  <p style={{ margin: 0, fontSize: 13, color: "#8A8A82" }}>
+                  <p style={{ margin: 0, fontSize: 13, color: "#5B5A52" }}>
                     Toque em "Nova consulta" para marcar a primeira.
                   </p>
                 )}
@@ -780,7 +780,7 @@ function Header({
                     notifItems.map(({ kind, appt }) => (
                       <div key={appt.id} style={styles.notifItem}>
                         <div style={{ fontSize: 12.5, fontWeight: 700, color: "#233B34" }}>{appt.clientName}</div>
-                        <div style={{ fontSize: 11.5, color: "#8A8A82", marginBottom: 4 }}>
+                        <div style={{ fontSize: 11.5, color: "#5B5A52", marginBottom: 4 }}>
                           {formatDatePt(appt.date)} às {appt.time}
                         </div>
                         {kind === "pending" ? (
@@ -907,11 +907,11 @@ function AppointmentCard({ appt, role, editable, onEdit, onDelete, onRequestActi
           </span>
           {appt.doctorName && role !== "chefe" && (
             <span style={styles.cardMetaItem}>
-              <Stethoscope size={13} color="#8A8A82" /> {appt.doctorName}
+              <Stethoscope size={13} color="#5B5A52" /> {appt.doctorName}
             </span>
           )}
           <span style={styles.cardMetaItem}>
-            <CircleDollarSign size={13} color="#8A8A82" />
+            <CircleDollarSign size={13} color="#5B5A52" />
             {appt.paymentMethod}
             {appt.installments > 1 ? ` (${appt.installments}x)` : ""}
             {appt.paymentMethod2 ? ` + ${appt.paymentMethod2}${appt.installments2 > 1 ? ` (${appt.installments2}x)` : ""}` : ""}
@@ -1028,7 +1028,7 @@ function RequestActionModal({ appt, onClose, onSubmit }) {
           </button>
         </div>
         <form onSubmit={submit} style={styles.form}>
-          <p style={{ fontSize: 13, color: "#8A8A82", margin: "-4px 0 0" }}>
+          <p style={{ fontSize: 13, color: "#5B5A52", margin: "-4px 0 0" }}>
             Consulta de <strong>{appt?.clientName}</strong> em {appt && formatDatePt(appt.date)} às {appt?.time}.
           </p>
           <label style={styles.label}>
@@ -1041,7 +1041,7 @@ function RequestActionModal({ appt, onClose, onSubmit }) {
                 style={{
                   ...styles.statusOption,
                   background: type === "cancelamento" ? "#FBE9E7" : "#fff",
-                  color: type === "cancelamento" ? "#A03B2E" : "#8A8A82",
+                  color: type === "cancelamento" ? "#A03B2E" : "#5B5A52",
                   borderColor: type === "cancelamento" ? "#C24A38" : "#E3E1D9",
                 }}
               >
@@ -1054,7 +1054,7 @@ function RequestActionModal({ appt, onClose, onSubmit }) {
                 style={{
                   ...styles.statusOption,
                   background: type === "remarcacao" ? "#FBF0DE" : "#fff",
-                  color: type === "remarcacao" ? "#8A5A15" : "#8A8A82",
+                  color: type === "remarcacao" ? "#8A5A15" : "#5B5A52",
                   borderColor: type === "remarcacao" ? "#D9932E" : "#E3E1D9",
                 }}
               >
@@ -1168,7 +1168,7 @@ function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, is
 
         {doctors.length === 0 ? (
           <div style={{ padding: "6px 18px 24px" }}>
-            <p style={{ fontSize: 13.5, color: "#8A8A82", marginBottom: 12 }}>
+            <p style={{ fontSize: 13.5, color: "#5B5A52", marginBottom: 12 }}>
               Cadastre pelo menos um médico antes de marcar consultas.
             </p>
             <button type="button" className="btn tap" style={styles.submitBtn} onClick={onOpenDoctorManager}>
@@ -1254,7 +1254,7 @@ function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, is
                     style={{
                       ...styles.statusOption,
                       background: form.paymentStatus === key ? s.bg : "#fff",
-                      color: form.paymentStatus === key ? s.text : "#8A8A82",
+                      color: form.paymentStatus === key ? s.text : "#5B5A52",
                       borderColor: form.paymentStatus === key ? s.dot : "#E3E1D9",
                     }}
                   >
@@ -1412,7 +1412,7 @@ function DoctorManagerModal({ doctors, onAdd, onRemove, onClose }) {
         </div>
         <div style={{ padding: "6px 18px 22px" }}>
           {doctors.length === 0 ? (
-            <p style={{ fontSize: 13.5, color: "#8A8A82", marginBottom: 14 }}>Nenhum médico cadastrado ainda.</p>
+            <p style={{ fontSize: 13.5, color: "#5B5A52", marginBottom: 14 }}>Nenhum médico cadastrado ainda.</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {doctors.map((d) => (
@@ -1531,7 +1531,7 @@ function DonutChart({ data, size = 140, strokeWidth = 24 }) {
       <text x="50%" y="47%" textAnchor="middle" fontSize="11" fontWeight="700" fill="#233B34">
         R$ {formatBRLShort(active ? active.value : total)}
       </text>
-      <text x="50%" y="61%" textAnchor="middle" fontSize="9" fill="#8A8A82">
+      <text x="50%" y="61%" textAnchor="middle" fontSize="9" fill="#5B5A52">
         {active ? active.label : "total"}
       </text>
     </svg>
@@ -1576,7 +1576,7 @@ function TrendBarChart({ data, height = 130 }) {
               borderRadius: "6px 6px 0 0",
             }}
           />
-          <div style={{ fontSize: 10, color: "#8A8A82" }}>{formatMonthShortPt(d.month)}</div>
+          <div style={{ fontSize: 10, color: "#5B5A52" }}>{formatMonthShortPt(d.month)}</div>
         </div>
       ))}
     </div>
@@ -1846,7 +1846,7 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
             </div>
             {byMethod.map(([k, v]) => (
               <div key={k} style={styles.financeRow}>
-                <span>{k} <span style={{ color: "#8A8A82" }}>({v.count})</span></span>
+                <span>{k} <span style={{ color: "#5B5A52" }}>({v.count})</span></span>
                 <strong>R$ {formatBRL(v.recebido)}</strong>
               </div>
             ))}
@@ -1862,7 +1862,7 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
         </div>
         {byStatus.map(([k, v]) => (
           <div key={k} style={styles.financeRow}>
-            <span>{STATUS_STYLES[k]?.label || k} <span style={{ color: "#8A8A82" }}>({v.count})</span></span>
+            <span>{STATUS_STYLES[k]?.label || k} <span style={{ color: "#5B5A52" }}>({v.count})</span></span>
             <strong>R$ {formatBRL(v.agendado)}</strong>
           </div>
         ))}
@@ -1873,7 +1873,7 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
           <h3 style={styles.financeSectionTitle}>Por médico</h3>
           {byDoctor.map(([k, v]) => (
             <div key={k} style={styles.financeRow}>
-              <span>{k} <span style={{ color: "#8A8A82" }}>({v.count})</span></span>
+              <span>{k} <span style={{ color: "#5B5A52" }}>({v.count})</span></span>
               <strong>R$ {formatBRL(v.recebido)}</strong>
             </div>
           ))}
@@ -2168,14 +2168,14 @@ const styles = {
   headerTitleBlock: { textAlign: "center" },
   headerEyebrow: { fontSize: 11, fontWeight: 600, letterSpacing: 0.6, textTransform: "uppercase", color: "#7A9B8E" },
   headerTitle: { fontFamily: FONT_DISPLAY, fontSize: 26, fontWeight: 700, margin: "2px 0 0", color: "#233B34" },
-  savingTag: { fontSize: 11, color: "#8A8A82" },
+  savingTag: { fontSize: 11, color: "#5B5A52" },
   switchBtn: { background: "#fff", border: "1px solid #E3E1D9", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, color: "#5B5A52" },
   financeBtn: { display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #E3E1D9", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, color: "#5B5A52" },
   iconBtnActive: { background: "#233B34", borderColor: "#233B34" },
   bellDot: { position: "absolute", top: -4, right: -4, background: "#C24A38", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 99, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1 },
   notifDropdown: { position: "absolute", top: 42, right: 0, width: 300, maxHeight: 360, overflowY: "auto", background: "#fff", border: "1px solid #E3E1D9", borderRadius: 12, boxShadow: "0 12px 32px rgba(35,59,52,0.16)", zIndex: 60 },
   notifDropdownHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: "1px solid #ECEAE1", fontSize: 12.5, fontWeight: 700, color: "#233B34" },
-  emptyNotif: { padding: "20px 14px", fontSize: 12.5, color: "#8A8A82", textAlign: "center" },
+  emptyNotif: { padding: "20px 14px", fontSize: 12.5, color: "#5B5A52", textAlign: "center" },
   notifItem: { padding: "10px 12px", borderBottom: "1px solid #F3F2ED" },
   notifActionBtn: { marginTop: 6, background: "#233B34", color: "#fff", border: "none", borderRadius: 7, padding: "5px 10px", fontSize: 11.5, fontWeight: 700 },
   errorBanner: { background: "#FBE9E7", color: "#A03B2E", padding: "10px 12px", borderRadius: 10, fontSize: 13, marginBottom: 12 },
@@ -2203,22 +2203,22 @@ const styles = {
   list: { display: "flex", flexDirection: "column", marginTop: 6 },
   dateHeader: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 600, color: "#7A9B8E", marginBottom: 8, paddingLeft: 2 },
   todayTag: { background: "#233B34", color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: 0.5, padding: "2px 7px", borderRadius: 5 },
-  emptyState: { textAlign: "center", padding: "48px 20px", color: "#8A8A82", fontSize: 14 },
+  emptyState: { textAlign: "center", padding: "48px 20px", color: "#5B5A52", fontSize: 14 },
   card: { display: "flex", gap: 12, background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "13px 14px", marginBottom: 9, alignItems: "flex-start" },
   cardTime: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 12.5, fontWeight: 700, color: "#233B34", paddingTop: 2, minWidth: 44 },
   cardName: { fontWeight: 700, fontSize: 15.5, color: "#233B34", marginBottom: 5 },
   cardMetaRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   statusBadge: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 99 },
   typeBadge: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 99, background: "#EEF2F0", color: "#2F6F63" },
-  cardMetaItem: { display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, color: "#8A8A82" },
-  cardNotes: { display: "flex", gap: 6, marginTop: 7, fontSize: 12.5, color: "#7A796F", lineHeight: 1.4 },
+  cardMetaItem: { display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, color: "#5B5A52" },
+  cardNotes: { display: "flex", gap: 6, marginTop: 7, fontSize: 12.5, color: "#5B5A52", lineHeight: 1.4 },
   cardActions: { display: "flex", flexDirection: "column", gap: 6 },
   smallIconBtn: { width: 28, height: 28, borderRadius: 7, background: "#F7F6F1", border: "1px solid #ECEAE1", display: "flex", alignItems: "center", justifyContent: "center" },
   fab: { position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: "#2F6F63", color: "#fff", border: "none", borderRadius: 99, padding: "14px 22px", fontSize: 14.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 8px 24px rgba(47,111,99,0.35)" },
   roleWrap: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 },
   roleCard: { background: "#fff", border: "1px solid #ECEAE1", borderRadius: 18, padding: "32px 26px", maxWidth: 340, width: "100%", textAlign: "center", boxShadow: "0 12px 32px rgba(35,59,52,0.08)" },
   roleTitle: { fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700, color: "#233B34", margin: "12px 0 4px" },
-  roleSubtitle: { fontSize: 13.5, color: "#8A8A82", margin: "0 0 22px" },
+  roleSubtitle: { fontSize: 13.5, color: "#5B5A52", margin: "0 0 22px" },
   roleBtnPrimary: { width: "100%", background: "#2F6F63", color: "#fff", border: "none", borderRadius: 11, padding: "13px 16px", fontSize: 14.5, fontWeight: 700, marginBottom: 10 },
   roleBtnSecondary: { width: "100%", background: "#fff", color: "#233B34", border: "1px solid #E3E1D9", borderRadius: 11, padding: "13px 16px", fontSize: 14.5, fontWeight: 600 },
   modalOverlay: { position: "fixed", inset: 0, background: "rgba(35,40,36,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 },
@@ -2228,7 +2228,7 @@ const styles = {
   form: { display: "flex", flexDirection: "column", gap: 13, padding: "10px 18px 24px" },
   label: { display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5, fontWeight: 600, color: "#5B5A52" },
   input: { border: "1px solid #E3E1D9", borderRadius: 9, padding: "11px 12px", fontSize: 14.5, color: "#2B2A26", background: "#FDFCFA" },
-  moneyPrefix: { position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#8A8A82", fontSize: 14.5, pointerEvents: "none" },
+  moneyPrefix: { position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#5B5A52", fontSize: 14.5, pointerEvents: "none" },
   inputConflict: { borderColor: "#C24A38", background: "#FDF4F2" },
   row2: { display: "flex", gap: 10 },
   statusOptions: { display: "flex", gap: 8, flexWrap: "wrap" },
@@ -2243,12 +2243,12 @@ const styles = {
   financeFilters: { display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" },
   statGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 },
   statCard: { background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "14px 14px" },
-  statCardLabel: { fontSize: 11.5, color: "#8A8A82", fontWeight: 600, marginBottom: 5 },
+  statCardLabel: { fontSize: 11.5, color: "#5B5A52", fontWeight: 600, marginBottom: 5 },
   statCardValue: { fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 700, color: "#233B34" },
   financeSection: { background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "14px 16px", marginBottom: 12 },
   financeSectionTitle: { fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 700, color: "#233B34", margin: "0 0 10px" },
   financeRow: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#3A3934", padding: "6px 0", borderBottom: "1px solid #F3F2ED" },
-  financeEmpty: { fontSize: 13, color: "#8A8A82", margin: 0 },
+  financeEmpty: { fontSize: 13, color: "#5B5A52", margin: 0 },
   chartRow: { display: "flex", alignItems: "center", gap: 16, marginBottom: 12, flexWrap: "wrap" },
   exportRow: { display: "flex", gap: 10, marginTop: 6, marginBottom: 100 },
   exportBtn: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "#fff", border: "1px solid #E3E1D9", borderRadius: 10, padding: "12px", fontSize: 13.5, fontWeight: 700, color: "#233B34" },
