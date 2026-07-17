@@ -2327,7 +2327,7 @@ const FONT_DISPLAY = "'Fraunces', serif";
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 
 const styles = {
-  page: { minHeight: "100vh", background: "#FFFFFF", fontFamily: FONT_BODY, color: "#2B2A26" },
+  page: { minHeight: "100vh", background: "#FAF9F5", fontFamily: FONT_BODY, color: "#2B2A26" },
   shell: { maxWidth: 640, margin: "0 auto", padding: "18px 14px 100px" },
   shellWide: { maxWidth: 1180 },
   controlsWrap: { maxWidth: 640 },
