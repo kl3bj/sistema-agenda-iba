@@ -91,6 +91,31 @@ function weekdayPt(iso) {
   return dias[d.getDay()];
 }
 
+const WEEKDAY_LETTERS = ["D", "S", "T", "Q", "Q", "S", "S"];
+const WEEKDAY_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+
+function getWeekDates(dateISO) {
+  const d = new Date(dateISO + "T12:00:00");
+  const dow = d.getDay();
+  const start = new Date(d);
+  start.setDate(d.getDate() - dow);
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const dd = new Date(start);
+    dd.setDate(start.getDate() + i);
+    out.push(dd.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+function formatWeekRangePt(weekDates) {
+  const meses = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const [y1, m1, d1] = weekDates[0].split("-");
+  const [y2, m2, d2] = weekDates[6].split("-");
+  if (m1 === m2) return `${parseInt(d1, 10)}–${parseInt(d2, 10)} de ${meses[parseInt(m1, 10) - 1]} de ${y1}`;
+  return `${parseInt(d1, 10)} de ${meses[parseInt(m1, 10) - 1]} – ${parseInt(d2, 10)} de ${meses[parseInt(m2, 10) - 1]} de ${y2}`;
+}
+
 function emptyForm() {
   return {
     id: null,
@@ -136,6 +161,15 @@ export default function App() {
   const [requestModalFor, setRequestModalFor] = useState(null); // id da consulta (médico solicitando)
   const [resolveModalFor, setResolveModalFor] = useState(null); // id da consulta (secretária resolvendo)
   const [financeiroOpen, setFinanceiroOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" ? window.innerWidth >= 880 : false);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsDesktop(window.innerWidth >= 880);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Autenticação da secretária (Supabase Auth)
   const [session, setSession] = useState(undefined); // undefined = carregando, null = deslogada, objeto = logada
@@ -406,6 +440,33 @@ export default function App() {
     return Array.from(map.entries());
   }, [filtered]);
 
+  const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
+
+  const weekGrouped = useMemo(() => {
+    let list = [...appointments];
+    if (role === "chefe") {
+      list = list.filter((a) => a.doctorName === selectedDoctorView && (!a.cancelled || a.doctorNotice));
+    } else if (doctorFilter !== "todos") {
+      list = list.filter((a) => a.doctorName === doctorFilter);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((a) => a.clientName.toLowerCase().includes(q));
+    }
+    const map = new Map(weekDates.map((d) => [d, []]));
+    for (const a of list) {
+      if (map.has(a.date)) map.get(a.date).push(a);
+    }
+    for (const arr of map.values()) arr.sort((x, y) => x.time.localeCompare(y.time));
+    return map;
+  }, [appointments, weekDates, doctorFilter, role, selectedDoctorView, search]);
+
+  function shiftWeek(n) {
+    const d = new Date(selectedDate + "T12:00:00");
+    d.setDate(d.getDate() + n * 7);
+    setSelectedDate(d.toISOString().slice(0, 10));
+  }
+
   function shiftDate(days) {
     const d = new Date(selectedDate + "T12:00:00");
     d.setDate(d.getDate() + days);
@@ -513,47 +574,64 @@ export default function App() {
           ) : (
             <>
           <div style={styles.toolbar}>
-            <div style={styles.dateNav}>
-              <button className="btn tap" style={styles.iconBtn} onClick={() => shiftDate(-1)} aria-label="Dia anterior">
-                <ChevronLeft size={18} color="#2F6F63" />
-              </button>
-              <div style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  className="btn tap"
-                  style={{ ...styles.dateChip, ...(showAllDates ? styles.dateChipInactive : {}), pointerEvents: "none" }}
-                >
-                  <Calendar size={15} color="#2F6F63" />
-                  <span style={{ textTransform: "capitalize" }}>
-                    {showAllDates ? "escolher dia" : `${formatDatePt(selectedDate)} · ${weekdayPt(selectedDate)}`}
-                  </span>
+            {isDesktop ? (
+              <div style={styles.dateNav}>
+                <button className="btn tap" style={styles.iconBtn} onClick={() => shiftWeek(-1)} aria-label="Semana anterior">
+                  <ChevronLeft size={18} color="#2F6F63" />
                 </button>
-                <input
-                  ref={dateInputRef}
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      setSelectedDate(e.target.value);
-                      setShowAllDates(false);
-                    }
-                  }}
-                  aria-label="Escolher data"
-                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
-                />
+                <button className="btn tap" style={styles.dateChip} onClick={() => setSelectedDate(todayISO())}>
+                  <Calendar size={15} color="#2F6F63" />
+                  <span>{formatWeekRangePt(weekDates)}</span>
+                </button>
+                <button className="btn tap" style={styles.iconBtn} onClick={() => shiftWeek(1)} aria-label="Próxima semana">
+                  <ChevronRight size={18} color="#2F6F63" />
+                </button>
               </div>
-              <button className="btn tap" style={styles.iconBtn} onClick={() => shiftDate(1)} aria-label="Próximo dia">
-                <ChevronRight size={18} color="#2F6F63" />
+            ) : (
+              <div style={styles.dateNav}>
+                <button className="btn tap" style={styles.iconBtn} onClick={() => shiftDate(-1)} aria-label="Dia anterior">
+                  <ChevronLeft size={18} color="#2F6F63" />
+                </button>
+                <div style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="btn tap"
+                    style={{ ...styles.dateChip, ...(showAllDates ? styles.dateChipInactive : {}), pointerEvents: "none" }}
+                  >
+                    <Calendar size={15} color="#2F6F63" />
+                    <span style={{ textTransform: "capitalize" }}>
+                      {showAllDates ? "escolher dia" : `${formatDatePt(selectedDate)} · ${weekdayPt(selectedDate)}`}
+                    </span>
+                  </button>
+                  <input
+                    ref={dateInputRef}
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setSelectedDate(e.target.value);
+                        setShowAllDates(false);
+                      }
+                    }}
+                    aria-label="Escolher data"
+                    style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                  />
+                </div>
+                <button className="btn tap" style={styles.iconBtn} onClick={() => shiftDate(1)} aria-label="Próximo dia">
+                  <ChevronRight size={18} color="#2F6F63" />
+                </button>
+              </div>
+            )}
+            {!isDesktop && (
+              <button
+                className="btn tap"
+                style={{ ...styles.pill, ...(showAllDates ? styles.pillActive : {}) }}
+                onClick={() => setShowAllDates((v) => !v)}
+              >
+                {showAllDates ? "Ver só o dia" : "Ver todas as datas"}
               </button>
-            </div>
-            <button
-              className="btn tap"
-              style={{ ...styles.pill, ...(showAllDates ? styles.pillActive : {}) }}
-              onClick={() => setShowAllDates((v) => !v)}
-            >
-              {showAllDates ? "Ver só o dia" : "Ver todas as datas"}
-            </button>
+            )}
           </div>
 
           {role === "secretaria" && doctors.length > 0 && (
@@ -580,6 +658,15 @@ export default function App() {
             />
           </div>
 
+          {isDesktop ? (
+            <WeekGridView
+              weekDates={weekDates}
+              weekGrouped={weekGrouped}
+              onEditAppt={openEditForm}
+              onNewForDate={(d) => (doctors.length === 0 ? setDoctorManagerOpen(true) : openNewForm(d))}
+              isSecretaria={isSecretaria}
+            />
+          ) : (
           <div style={styles.list}>
             {grouped.length === 0 ? (
               <div style={styles.emptyState}>
@@ -617,6 +704,7 @@ export default function App() {
               ))
             )}
           </div>
+          )}
 
           {isSecretaria && (
             <button
@@ -1004,6 +1092,56 @@ function AppointmentCard({ appt, role, editable, onEdit, onDelete, onRequestActi
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function WeekGridView({ weekDates, weekGrouped, onEditAppt, onNewForDate, isSecretaria }) {
+  const today = todayISO();
+  return (
+    <div style={styles.weekGrid}>
+      {weekDates.map((date, i) => {
+        const items = weekGrouped.get(date) || [];
+        const isToday = date === today;
+        const [, m, d] = date.split("-");
+        return (
+          <div key={date} style={styles.weekCol}>
+            <div style={{ ...styles.weekColHeader, ...(isToday ? styles.weekColHeaderToday : {}) }}>
+              <div style={styles.weekColLetter}>{WEEKDAY_LETTERS[i]}</div>
+              <div style={styles.weekColNum}>{parseInt(d, 10)}</div>
+              <div style={styles.weekColMonth}>{WEEKDAY_SHORT[i]}</div>
+              {isToday && <div style={styles.weekTodayDot} />}
+            </div>
+            <div style={styles.weekColBody}>
+              {items.length === 0 ? (
+                <div style={styles.weekColEmpty}>—</div>
+              ) : (
+                items.map((a) => {
+                  const st = STATUS_STYLES[a.paymentStatus] || STATUS_STYLES.pendente;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className="btn tap"
+                      style={{ ...styles.weekChip, borderLeft: `3px solid ${st.dot}` }}
+                      onClick={() => onEditAppt(a)}
+                    >
+                      <div style={styles.weekChipTime}>{a.time}</div>
+                      <div style={styles.weekChipName}>{a.clientName}</div>
+                      {a.doctorName && <div style={styles.weekChipDoctor}>{a.doctorName}</div>}
+                    </button>
+                  );
+                })
+              )}
+              {isSecretaria && (
+                <button type="button" className="btn tap" style={styles.weekAddBtn} onClick={() => onNewForDate(date)}>
+                  <Plus size={13} color="#2F6F63" /> Nova
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2227,8 +2365,23 @@ const styles = {
   searchRow: { display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #E3E1D9", borderRadius: 10, padding: "9px 12px", marginBottom: 10 },
   searchInput: { border: "none", outline: "none", flex: 1, fontSize: 14, background: "transparent" },
   list: { display: "flex", flexDirection: "column", marginTop: 6 },
-  dateHeader: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 600, color: "#7A9B8E", marginBottom: 8, paddingLeft: 2 },
+  weekGrid: { display: "grid", gridTemplateColumns: "repeat(7, minmax(130px, 1fr))", gap: 10, marginTop: 10, overflowX: "auto", paddingBottom: 8 },
+  weekCol: { display: "flex", flexDirection: "column", background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, minHeight: 220, overflow: "hidden" },
+  weekColHeader: { display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 6px 8px", borderBottom: "1px solid #ECEAE1", position: "relative" },
+  weekColHeaderToday: { background: "#EEF2F0" },
+  weekColLetter: { fontSize: 11, fontWeight: 700, color: "#5B5A52", textTransform: "uppercase" },
+  weekColNum: { fontSize: 20, fontWeight: 800, color: "#233B34", lineHeight: 1.2 },
+  weekColMonth: { fontSize: 10.5, color: "#5B5A52", textTransform: "capitalize" },
+  weekTodayDot: { position: "absolute", top: 8, right: 10, width: 7, height: 7, borderRadius: 99, background: "#2F6F63" },
+  weekColBody: { display: "flex", flexDirection: "column", gap: 6, padding: 8, flex: 1 },
+  weekColEmpty: { textAlign: "center", fontSize: 12, color: "#B0AD9F", padding: "10px 0" },
+  weekChip: { textAlign: "left", background: "#F7F6F1", border: "1px solid #ECEAE1", borderRadius: 8, padding: "6px 8px", display: "flex", flexDirection: "column", gap: 1, width: "100%" },
+  weekChipTime: { fontSize: 11, fontWeight: 700, color: "#233B34" },
+  weekChipName: { fontSize: 12.5, fontWeight: 600, color: "#2B2A26", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  weekChipDoctor: { fontSize: 10.5, color: "#5B5A52", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  weekAddBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 2, background: "transparent", border: "1px dashed #C9C6BA", borderRadius: 8, padding: "6px 8px", fontSize: 11.5, fontWeight: 600, color: "#2F6F63" },
   todayTag: { background: "#233B34", color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: 0.5, padding: "2px 7px", borderRadius: 5 },
+  dateHeader: { display: "flex", alignItems: "center", gap: 8, fontSize: 16, fontWeight: 800, color: "#233B34", marginBottom: 10, paddingLeft: 2, paddingTop: 6, borderTop: "1px solid #ECEAE1" },
   emptyState: { textAlign: "center", padding: "48px 20px", color: "#3A3934", fontSize: 14 },
   card: { display: "flex", gap: 12, background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "13px 14px", marginBottom: 9, alignItems: "flex-start" },
   cardTime: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 12.5, fontWeight: 700, color: "#233B34", paddingTop: 2, minWidth: 44 },
