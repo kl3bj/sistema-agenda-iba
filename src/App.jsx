@@ -537,7 +537,7 @@ export default function App() {
       ) : role === null ? (
         <RoleSelect onSelectSecretaria={requestSecretariaAccess} onSelectChefe={() => setDoctorPickerOpen(true)} />
       ) : (
-        <div style={styles.shell}>
+        <div style={{ ...styles.shell, ...(isDesktop ? styles.shellWide : {}) }}>
           <Header
             role={role}
             selectedDoctorView={selectedDoctorView}
@@ -573,6 +573,7 @@ export default function App() {
             />
           ) : (
             <>
+          <div style={isDesktop ? styles.controlsWrap : undefined}>
           <div style={styles.toolbar}>
             {isDesktop ? (
               <div style={styles.dateNav}>
@@ -656,6 +657,7 @@ export default function App() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+          </div>
           </div>
 
           {isDesktop ? (
@@ -2327,6 +2329,8 @@ const FONT_BODY = "'Inter', system-ui, sans-serif";
 const styles = {
   page: { minHeight: "100vh", background: "#FFFFFF", fontFamily: FONT_BODY, color: "#2B2A26" },
   shell: { maxWidth: 640, margin: "0 auto", padding: "18px 14px 100px" },
+  shellWide: { maxWidth: 1180 },
+  controlsWrap: { maxWidth: 640 },
   header: { display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 18 },
   headerActions: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexWrap: "wrap", position: "relative" },
   headerTitleBlock: { textAlign: "center" },
