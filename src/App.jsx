@@ -1564,12 +1564,12 @@ function FormModal({ form, setForm, doctors, appointments, onClose, onSubmit, is
   );
 }
 
-function ConfirmModal({ onCancel, onConfirm }) {
+function ConfirmModal({ onCancel, onConfirm, message = "Excluir esta consulta da agenda? Essa ação não pode ser desfeita." }) {
   return (
     <div style={styles.modalOverlay} onClick={onCancel}>
       <div style={{ ...styles.modal, maxWidth: 320 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ padding: "22px 20px" }}>
-          <p style={{ margin: "0 0 18px", fontSize: 15, color: "#3A3934" }}>Excluir esta consulta da agenda? Essa ação não pode ser desfeita.</p>
+          <p style={{ margin: "0 0 18px", fontSize: 15, color: "#3A3934" }}>{message}</p>
           <div style={{ display: "flex", gap: 10 }}>
             <button className="btn tap" style={styles.cancelBtn} onClick={onCancel}>Cancelar</button>
             <button className="btn tap" style={styles.deleteBtn} onClick={onConfirm}>Excluir</button>
@@ -1982,7 +1982,7 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
   }
 
   return (
-    <div>
+    <div style={styles.financeWrap}>
       <button className="btn tap" style={styles.backLink} onClick={onBack}>
         <ArrowLeft size={15} color="#3A3934" /> Voltar para a agenda
       </button>
@@ -2113,9 +2113,11 @@ function normalizePatientKey(name) {
 }
 
 const PRONTUARIO_TYPES = [
+  { value: "aplicacao", label: "Aplicação" },
   { value: "dose", label: "Dose de medicação" },
-  { value: "retorno", label: "Retorno" },
-  { value: "outro", label: "Outro" },
+  { value: "laser", label: "Laser" },
+  { value: "capacete", label: "Capacete" },
+  { value: "outro", label: "Outros" },
 ];
 
 function exportProntuarioPDF({ patientName, entries, totalConsultas }) {
@@ -2247,8 +2249,9 @@ function PatientProntuario({ patient, role, onBack }) {
   const [error, setError] = useState(null);
   const [record, setRecord] = useState(null);
   const [entryDate, setEntryDate] = useState(todayISO());
-  const [entryType, setEntryType] = useState("dose");
+  const [entryType, setEntryType] = useState("aplicacao");
   const [entryText, setEntryText] = useState("");
+  const [confirmDeleteEntry, setConfirmDeleteEntry] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -2274,10 +2277,37 @@ function PatientProntuario({ patient, role, onBack }) {
   );
 
   const countsByType = useMemo(() => {
-    const counts = { dose: 0, retorno: 0, outro: 0 };
+    const counts = {};
+    for (const t of PRONTUARIO_TYPES) counts[t.value] = 0;
     for (const e of entries) counts[e.type] = (counts[e.type] || 0) + 1;
     return counts;
   }, [entries]);
+
+  async function handleDeleteEntry(entryId) {
+    setSaving(true);
+    setError(null);
+    const nextEntries = (record?.entries || []).filter((e) => e.id !== entryId);
+    const { data, error: err } = await supabase
+      .from("prontuarios")
+      .upsert(
+        {
+          patient_key: patient.key,
+          patient_name: patient.name,
+          entries: nextEntries,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "patient_key" }
+      )
+      .select()
+      .maybeSingle();
+    setSaving(false);
+    setConfirmDeleteEntry(null);
+    if (err) {
+      setError("Não foi possível excluir. Verifique se você está logada e tente de novo.");
+      return;
+    }
+    setRecord(data);
+  }
 
   async function handleAddEntry(e) {
     e.preventDefault();
@@ -2331,9 +2361,9 @@ function PatientProntuario({ patient, role, onBack }) {
       ) : (
         <>
           <div style={styles.prontuarioCounters}>
-            <span><strong>{countsByType.dose}</strong> dose(s)</span>
-            <span><strong>{countsByType.retorno}</strong> retorno(s)</span>
-            <span><strong>{countsByType.outro}</strong> outro(s)</span>
+            {PRONTUARIO_TYPES.map((t) => (
+              <span key={t.value}><strong>{countsByType[t.value] || 0}</strong> {t.label.toLowerCase()}</span>
+            ))}
           </div>
 
           {isSecretaria && (
@@ -2355,7 +2385,7 @@ function PatientProntuario({ patient, role, onBack }) {
               <label>
                 <span style={styles.label}>Anotação (opcional)</span>
                 <textarea
-                  style={{ ...styles.input, minHeight: 60, resize: "vertical" }}
+                  style={{ ...styles.input, minHeight: 130, width: "100%", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
                   value={entryText}
                   onChange={(e) => setEntryText(e.target.value)}
                   placeholder="Ex: aplicada dose semanal, sem intercorrências..."
@@ -2388,13 +2418,34 @@ function PatientProntuario({ patient, role, onBack }) {
                 <div key={e.id} style={styles.prontuarioEntry}>
                   <div style={styles.prontuarioEntryHeader}>
                     <span style={styles.prontuarioEntryType}>{PRONTUARIO_TYPES.find((t) => t.value === e.type)?.label || e.type}</span>
-                    <span style={styles.prontuarioEntryDate}>{formatDatePt(e.date)}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={styles.prontuarioEntryDate}>{formatDatePt(e.date)}</span>
+                      {isSecretaria && (
+                        <button
+                          type="button"
+                          className="btn tap"
+                          style={styles.smallIconBtn}
+                          onClick={() => setConfirmDeleteEntry(e.id)}
+                          aria-label="Excluir registro"
+                        >
+                          <Trash2 size={14} color="#A03B2E" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {e.text && <p style={styles.prontuarioEntryText}>{e.text}</p>}
                 </div>
               ))
             )}
           </div>
+
+          {confirmDeleteEntry && (
+            <ConfirmModal
+              message="Excluir este registro do prontuário? Essa ação não pode ser desfeita."
+              onCancel={() => setConfirmDeleteEntry(null)}
+              onConfirm={() => handleDeleteEntry(confirmDeleteEntry)}
+            />
+          )}
         </>
       )}
     </div>
@@ -2774,7 +2825,7 @@ const styles = {
   statCardValue: { fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 700, color: "#233B34" },
   financeSection: { background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "14px 16px", marginBottom: 12 },
   financeSectionTitle: { fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 700, color: "#233B34", margin: "0 0 10px" },
-  financeWrap: {},
+  financeWrap: { maxWidth: 640 },
   financeTitle: { fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, color: "#233B34", margin: "10px 0 14px" },
   patientRow: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "12px 14px", width: "100%", textAlign: "left" },
   patientRowName: { fontSize: 14.5, fontWeight: 700, color: "#2B2A26" },
