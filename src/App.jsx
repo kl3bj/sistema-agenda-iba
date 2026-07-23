@@ -161,6 +161,7 @@ export default function App() {
   const [requestModalFor, setRequestModalFor] = useState(null); // id da consulta (médico solicitando)
   const [resolveModalFor, setResolveModalFor] = useState(null); // id da consulta (secretária resolvendo)
   const [financeiroOpen, setFinanceiroOpen] = useState(false);
+  const [pacientesOpen, setPacientesOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" ? window.innerWidth >= 880 : false);
 
   useEffect(() => {
@@ -574,6 +575,8 @@ export default function App() {
             onOpenPassword={() => setPasswordModal("change")}
             onOpenFinanceiro={() => setFinanceiroOpen(true)}
             financeiroOpen={financeiroOpen}
+            onOpenPacientes={() => setPacientesOpen(true)}
+            pacientesOpen={pacientesOpen}
             appointments={appointments}
             selectedDoctorViewForBell={selectedDoctorView}
             onOpenResolveFromBell={(id) => setResolveModalFor(id)}
@@ -589,6 +592,12 @@ export default function App() {
               role={role}
               selectedDoctorView={selectedDoctorView}
               onBack={() => setFinanceiroOpen(false)}
+            />
+          ) : pacientesOpen ? (
+            <PacientesScreen
+              appointments={appointments}
+              role={role}
+              onBack={() => setPacientesOpen(false)}
             />
           ) : (
             <>
@@ -834,6 +843,8 @@ function Header({
   onOpenPassword,
   onOpenFinanceiro,
   financeiroOpen,
+  onOpenPacientes,
+  pacientesOpen,
   appointments,
   selectedDoctorViewForBell,
   onOpenResolveFromBell,
@@ -859,6 +870,16 @@ function Header({
         >
           <PieChart size={15} color={financeiroOpen ? "#fff" : "#3A3934"} />
           <span style={{ color: financeiroOpen ? "#fff" : "#3A3934" }}>Financeiro</span>
+        </button>
+
+        <button
+          className="btn tap"
+          style={{ ...styles.financeBtn, ...(pacientesOpen ? styles.iconBtnActive : {}) }}
+          onClick={onOpenPacientes}
+          aria-label="Pacientes"
+        >
+          <ClipboardList size={15} color={pacientesOpen ? "#fff" : "#3A3934"} />
+          <span style={{ color: pacientesOpen ? "#fff" : "#3A3934" }}>Pacientes</span>
         </button>
 
         {role === "secretaria" && (
@@ -2083,6 +2104,303 @@ function FinanceiroScreen({ appointments, doctors, role, selectedDoctorView, onB
   );
 }
 
+function normalizePatientKey(name) {
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const PRONTUARIO_TYPES = [
+  { value: "dose", label: "Dose de medicação" },
+  { value: "retorno", label: "Retorno" },
+  { value: "outro", label: "Outro" },
+];
+
+function exportProntuarioPDF({ patientName, entries, totalConsultas }) {
+  const doc = new jsPDF();
+  let y = 20;
+  doc.setFontSize(16);
+  doc.text(`Prontuário — ${patientName}`, 14, y);
+  y += 7;
+  doc.setFontSize(11);
+  doc.setTextColor(120);
+  doc.text(`Emitido em ${formatDatePt(todayISO())} · ${totalConsultas} consulta(s) na agenda`, 14, y);
+  doc.setTextColor(0);
+  y += 12;
+
+  doc.setFontSize(13);
+  doc.text("Histórico de acompanhamento", 14, y);
+  y += 8;
+  doc.setFontSize(11);
+
+  if (entries.length === 0) {
+    doc.text("Nenhum registro ainda.", 14, y);
+  } else {
+    entries.forEach((e) => {
+      if (y > 275) { doc.addPage(); y = 20; }
+      const typeLabel = PRONTUARIO_TYPES.find((t) => t.value === e.type)?.label || e.type;
+      doc.setFont(undefined, "bold");
+      doc.text(`${formatDatePt(e.date)} — ${typeLabel}`, 14, y);
+      doc.setFont(undefined, "normal");
+      y += 6;
+      if (e.text) {
+        const lines = doc.splitTextToSize(e.text, 180);
+        lines.forEach((line) => {
+          if (y > 280) { doc.addPage(); y = 20; }
+          doc.text(line, 16, y);
+          y += 5.5;
+        });
+      }
+      y += 4;
+    });
+  }
+
+  doc.save(`prontuario-${normalizePatientKey(patientName).replace(/\s+/g, "-")}.pdf`);
+}
+
+function PacientesScreen({ appointments, role, onBack }) {
+  const [search, setSearch] = useState("");
+  const [selectedKey, setSelectedKey] = useState(null);
+
+  const patients = useMemo(() => {
+    const map = new Map();
+    for (const a of appointments) {
+      const key = normalizePatientKey(a.clientName);
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, { key, name: a.clientName, count: 0, lastDate: a.date });
+      const p = map.get(key);
+      p.count += 1;
+      if (a.date > p.lastDate) { p.lastDate = a.date; p.name = a.clientName; }
+    }
+    return Array.from(map.values()).sort((x, y) => y.lastDate.localeCompare(x.lastDate));
+  }, [appointments]);
+
+  const filteredPatients = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return patients;
+    return patients.filter((p) => p.name.toLowerCase().includes(q));
+  }, [patients, search]);
+
+  const selectedPatient = patients.find((p) => p.key === selectedKey) || null;
+
+  if (selectedPatient) {
+    return (
+      <PatientProntuario
+        patient={selectedPatient}
+        role={role}
+        onBack={() => setSelectedKey(null)}
+      />
+    );
+  }
+
+  return (
+    <div style={styles.financeWrap}>
+      <button className="btn tap" style={styles.backLink} onClick={onBack}>
+        <ArrowLeft size={16} color="#3A3934" /> Voltar para a agenda
+      </button>
+      <h2 style={styles.financeTitle}>Pacientes</h2>
+
+      <div style={styles.searchRow}>
+        <Search size={15} color="#8A8A82" />
+        <input
+          style={styles.searchInput}
+          placeholder="Buscar paciente pelo nome..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {filteredPatients.length === 0 ? (
+        <div style={styles.emptyState}>
+          <ClipboardList size={28} color="#B9B6A9" />
+          <p style={{ margin: "10px 0 0", fontWeight: 600, color: "#54524A" }}>Nenhum paciente encontrado</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+          {filteredPatients.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              className="btn tap"
+              style={styles.patientRow}
+              onClick={() => setSelectedKey(p.key)}
+            >
+              <div>
+                <div style={styles.patientRowName}>{p.name}</div>
+                <div style={styles.patientRowMeta}>{p.count} consulta(s) · última em {formatDatePt(p.lastDate)}</div>
+              </div>
+              <ChevronRight size={18} color="#8A8A82" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PatientProntuario({ patient, role, onBack }) {
+  const isSecretaria = role === "secretaria";
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [record, setRecord] = useState(null);
+  const [entryDate, setEntryDate] = useState(todayISO());
+  const [entryType, setEntryType] = useState("dose");
+  const [entryText, setEntryText] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    supabase
+      .from("prontuarios")
+      .select("*")
+      .eq("patient_key", patient.key)
+      .maybeSingle()
+      .then(({ data, error: err }) => {
+        if (cancelled) return;
+        if (err) setError("Não foi possível carregar o prontuário agora.");
+        setRecord(data || null);
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [patient.key]);
+
+  const entries = useMemo(
+    () => (record?.entries || []).slice().sort((a, b) => (b.date + (b.createdAt || "")).localeCompare(a.date + (a.createdAt || ""))),
+    [record]
+  );
+
+  const countsByType = useMemo(() => {
+    const counts = { dose: 0, retorno: 0, outro: 0 };
+    for (const e of entries) counts[e.type] = (counts[e.type] || 0) + 1;
+    return counts;
+  }, [entries]);
+
+  async function handleAddEntry(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const newEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      date: entryDate,
+      type: entryType,
+      text: entryText.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    const nextEntries = [...(record?.entries || []), newEntry];
+    const { data, error: err } = await supabase
+      .from("prontuarios")
+      .upsert(
+        {
+          patient_key: patient.key,
+          patient_name: patient.name,
+          entries: nextEntries,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "patient_key" }
+      )
+      .select()
+      .maybeSingle();
+    setSaving(false);
+    if (err) {
+      setError("Não foi possível salvar. Verifique se você está logada e tente de novo.");
+      return;
+    }
+    setRecord(data);
+    setEntryText("");
+    setEntryDate(todayISO());
+  }
+
+  return (
+    <div style={styles.financeWrap}>
+      <button className="btn tap" style={styles.backLink} onClick={onBack}>
+        <ArrowLeft size={16} color="#3A3934" /> Voltar para pacientes
+      </button>
+      <h2 style={styles.financeTitle}>{patient.name}</h2>
+      <p style={{ margin: "0 0 16px", fontSize: 13, color: "#3A3934" }}>
+        {patient.count} consulta(s) registradas na agenda · última em {formatDatePt(patient.lastDate)}
+      </p>
+
+      {error && <div style={styles.errorBanner}>{error}</div>}
+
+      {loading ? (
+        <p style={{ color: "#3A3934" }}>Carregando prontuário...</p>
+      ) : (
+        <>
+          <div style={styles.prontuarioCounters}>
+            <span><strong>{countsByType.dose}</strong> dose(s)</span>
+            <span><strong>{countsByType.retorno}</strong> retorno(s)</span>
+            <span><strong>{countsByType.outro}</strong> outro(s)</span>
+          </div>
+
+          {isSecretaria && (
+            <form onSubmit={handleAddEntry} style={styles.prontuarioForm}>
+              <div style={{ display: "flex", gap: 10 }}>
+                <label style={{ flex: 1 }}>
+                  <span style={styles.label}>Data</span>
+                  <input type="date" style={styles.input} value={entryDate} onChange={(e) => setEntryDate(e.target.value)} required />
+                </label>
+                <label style={{ flex: 1 }}>
+                  <span style={styles.label}>Tipo</span>
+                  <select style={styles.input} value={entryType} onChange={(e) => setEntryType(e.target.value)}>
+                    {PRONTUARIO_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label>
+                <span style={styles.label}>Anotação (opcional)</span>
+                <textarea
+                  style={{ ...styles.input, minHeight: 60, resize: "vertical" }}
+                  value={entryText}
+                  onChange={(e) => setEntryText(e.target.value)}
+                  placeholder="Ex: aplicada dose semanal, sem intercorrências..."
+                />
+              </label>
+              <button type="submit" className="btn tap" style={styles.submitBtn} disabled={saving}>
+                {saving ? "Salvando..." : "+ Adicionar ao prontuário"}
+              </button>
+            </form>
+          )}
+
+          <div style={styles.exportRow}>
+            <button
+              className="btn tap"
+              style={styles.exportBtn}
+              onClick={() => exportProntuarioPDF({ patientName: patient.name, entries, totalConsultas: patient.count })}
+            >
+              <FileText size={15} color="#233B34" /> Exportar PDF
+            </button>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            {entries.length === 0 ? (
+              <div style={styles.emptyState}>
+                <ClipboardList size={28} color="#B9B6A9" />
+                <p style={{ margin: "10px 0 0", fontWeight: 600, color: "#54524A" }}>Nenhum registro ainda</p>
+              </div>
+            ) : (
+              entries.map((e) => (
+                <div key={e.id} style={styles.prontuarioEntry}>
+                  <div style={styles.prontuarioEntryHeader}>
+                    <span style={styles.prontuarioEntryType}>{PRONTUARIO_TYPES.find((t) => t.value === e.type)?.label || e.type}</span>
+                    <span style={styles.prontuarioEntryDate}>{formatDatePt(e.date)}</span>
+                  </div>
+                  {e.text && <p style={styles.prontuarioEntryText}>{e.text}</p>}
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function PasswordModal({ onClose, onChange }) {
   const [pwd, setPwd] = useState("");
   const [pwd2, setPwd2] = useState("");
@@ -2456,6 +2774,18 @@ const styles = {
   statCardValue: { fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 700, color: "#233B34" },
   financeSection: { background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "14px 16px", marginBottom: 12 },
   financeSectionTitle: { fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 700, color: "#233B34", margin: "0 0 10px" },
+  financeWrap: {},
+  financeTitle: { fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, color: "#233B34", margin: "10px 0 14px" },
+  patientRow: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "12px 14px", width: "100%", textAlign: "left" },
+  patientRowName: { fontSize: 14.5, fontWeight: 700, color: "#2B2A26" },
+  patientRowMeta: { fontSize: 12, color: "#5B5A52", marginTop: 2 },
+  prontuarioCounters: { display: "flex", gap: 16, flexWrap: "wrap", background: "#F7F6F1", border: "1px solid #ECEAE1", borderRadius: 12, padding: "12px 14px", marginBottom: 16, fontSize: 13.5, color: "#3A3934" },
+  prontuarioForm: { display: "flex", flexDirection: "column", gap: 12, background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: 14, marginBottom: 16 },
+  prontuarioEntry: { background: "#fff", border: "1px solid #ECEAE1", borderRadius: 10, padding: "10px 12px", marginBottom: 8 },
+  prontuarioEntryHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  prontuarioEntryType: { fontSize: 12.5, fontWeight: 700, color: "#2F6F63" },
+  prontuarioEntryDate: { fontSize: 12, color: "#5B5A52" },
+  prontuarioEntryText: { margin: "6px 0 0", fontSize: 13, color: "#2B2A26", lineHeight: 1.4 },
   financeRow: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#3A3934", padding: "6px 0", borderBottom: "1px solid #F3F2ED" },
   financeEmpty: { fontSize: 13, color: "#3A3934", margin: 0 },
   chartRow: { display: "flex", alignItems: "center", gap: 16, marginBottom: 12, flexWrap: "wrap" },
