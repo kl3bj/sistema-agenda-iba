@@ -573,9 +573,9 @@ export default function App() {
             saving={saving}
             onOpenDoctors={() => setDoctorManagerOpen(true)}
             onOpenPassword={() => setPasswordModal("change")}
-            onOpenFinanceiro={() => setFinanceiroOpen(true)}
+            onOpenFinanceiro={() => { setPacientesOpen(false); setFinanceiroOpen(true); }}
             financeiroOpen={financeiroOpen}
-            onOpenPacientes={() => setPacientesOpen(true)}
+            onOpenPacientes={() => { setFinanceiroOpen(false); setPacientesOpen(true); }}
             pacientesOpen={pacientesOpen}
             appointments={appointments}
             selectedDoctorViewForBell={selectedDoctorView}
@@ -2825,7 +2825,7 @@ const styles = {
   statCardValue: { fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 700, color: "#233B34" },
   financeSection: { background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "14px 16px", marginBottom: 12 },
   financeSectionTitle: { fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 700, color: "#233B34", margin: "0 0 10px" },
-  financeWrap: { maxWidth: 640 },
+  financeWrap: {},
   financeTitle: { fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, color: "#233B34", margin: "10px 0 14px" },
   patientRow: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", border: "1px solid #ECEAE1", borderRadius: 12, padding: "12px 14px", width: "100%", textAlign: "left" },
   patientRowName: { fontSize: 14.5, fontWeight: 700, color: "#2B2A26" },
