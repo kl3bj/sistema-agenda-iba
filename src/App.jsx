@@ -969,7 +969,13 @@ function Header({
           {role === "secretaria" ? `Painel da secretária${secretaryName ? ` · ${secretaryName}` : ""}` : "Agenda do médico"}
         </div>
         <h1 style={styles.headerTitle}>
-          {role === "chefe" ? `Agenda do Doutor(a) ${selectedDoctorView}` : "Agenda da Clínica Cemo"}
+          {financeiroOpen
+            ? "Financeiro da Clínica"
+            : pacientesOpen
+            ? "Prontuários dos pacientes"
+            : role === "chefe"
+            ? `Agenda do Doutor(a) ${selectedDoctorView}`
+            : "Agenda da Clínica Cemo"}
         </h1>
       </div>
     </div>
@@ -2397,17 +2403,7 @@ function PatientProntuario({ patient, role, onBack }) {
             </form>
           )}
 
-          <div style={styles.exportRow}>
-            <button
-              className="btn tap"
-              style={styles.exportBtn}
-              onClick={() => exportProntuarioPDF({ patientName: patient.name, entries, totalConsultas: patient.count })}
-            >
-              <FileText size={15} color="#233B34" /> Exportar PDF
-            </button>
-          </div>
-
-          <div style={{ marginTop: 16 }}>
+          <div>
             {entries.length === 0 ? (
               <div style={styles.emptyState}>
                 <ClipboardList size={28} color="#B9B6A9" />
@@ -2437,6 +2433,16 @@ function PatientProntuario({ patient, role, onBack }) {
                 </div>
               ))
             )}
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <button
+              className="btn tap"
+              style={styles.exportBtn}
+              onClick={() => exportProntuarioPDF({ patientName: patient.name, entries, totalConsultas: patient.count })}
+            >
+              <FileText size={15} color="#233B34" /> Exportar PDF
+            </button>
           </div>
 
           {confirmDeleteEntry && (
